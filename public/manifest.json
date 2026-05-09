@@ -1,15 +1,15 @@
 {
-  "name": "Food Safety · سلامة الغذاء",
+  "name": "Food Safety",
   "short_name": "Food Safety",
-  "description": "Food Safety — local inspections and establishments register. سلامة الغذاء — التفتيش المحلي وسجل المنشآت.",
+  "description": "Food safety inspections dashboard: establishments register, local inspection data, and operational status follow-up.",
   "theme_color": "#8B1538",
   "background_color": "#FFFFFF",
   "display": "standalone",
   "orientation": "portrait-primary",
   "start_url": "/",
   "scope": "/",
-  "lang": "ar",
-  "dir": "rtl",
+  "lang": "en",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/pwa-64.png",
