@@ -333,10 +333,12 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
   }, [])
 
   const observerTarget = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const el = observerTarget.current
-    if (!el || filteredData.length === 0 || shownCount >= filteredData.length)
+    const root = scrollContainerRef.current
+    if (!el || !root || filteredData.length === 0 || shownCount >= filteredData.length)
       return
 
     const observer = new IntersectionObserver(
@@ -347,7 +349,11 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
         if (shownCountRef.current >= fd.length) return
         loadMore()
       },
-      { threshold: 0.1 },
+      {
+        root,
+        rootMargin: "120px",
+        threshold: 0,
+      },
     )
 
     observer.observe(el)
@@ -473,13 +479,23 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
             </span>
           </div>
           <div
+            ref={scrollContainerRef}
             className={cn(
-              "min-[900px]:overflow-visible",
-              "establishments-table-scroll max-[899px]:overflow-x-auto max-[899px]:scroll-smooth max-[899px]:overscroll-x-contain max-[899px]:[touch-action:pan-x]",
+              "establishments-table-scroll",
+              "max-h-[min(520px,58dvh)] md:max-h-[min(600px,70vh)]",
+              "overflow-y-auto overflow-x-auto",
+              "scroll-smooth overscroll-x-contain overscroll-y-contain",
+              "max-[899px]:scroll-smooth max-[899px]:overscroll-x-contain max-[899px]:[touch-action:pan-x_pan-y]",
             )}
           >
           <table className="establishments-table w-full min-w-full max-[899px]:min-w-[940px] table-auto border-collapse">
-            <thead className="border-b-2 border-border bg-muted/50 dark:bg-muted/30">
+            <thead
+              className={cn(
+                "border-b-2 border-border bg-muted/50 dark:bg-muted/30",
+                "[&_th]:sticky [&_th]:top-0 [&_th]:z-20",
+                "[&_th]:bg-muted/95 [&_th]:shadow-[0_1px_0_0_hsl(var(--border))] dark:[&_th]:bg-muted/90",
+              )}
+            >
               <tr>
                 <th
                   className={cn(
@@ -552,38 +568,36 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
               )}
             </tbody>
           </table>
+
+            {filteredData.length > 0 && (
+              <>
+                <div ref={observerTarget} className="h-4 w-full shrink-0" aria-hidden />
+
+                {loading && (
+                  <div
+                    className="flex items-center justify-center gap-3 py-6"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div
+                      className="size-5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                      aria-hidden
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {t("table.loading")}
+                    </span>
+                  </div>
+                )}
+
+                {!hasMore && displayedRows.length > 0 && (
+                  <div className="py-6 text-center">
+                    <p className="text-sm text-muted-foreground">{t("table.endOfList")}</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
-
-        {filteredData.length > 0 && (
-          <>
-            {loading && (
-              <div
-                className="flex items-center justify-center gap-3 py-8"
-                role="status"
-                aria-live="polite"
-              >
-                <div
-                  className="size-5 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent"
-                  aria-hidden
-                />
-                <span className="text-sm text-muted-foreground">
-                  {t("table.loading")}
-                </span>
-              </div>
-            )}
-
-            <div ref={observerTarget} className="h-4 w-full shrink-0" />
-
-            {!hasMore && displayedRows.length > 0 && (
-              <div className="py-8 text-center">
-                <p className="text-sm text-muted-foreground">
-                  {t("table.endOfList")}
-                </p>
-              </div>
-            )}
-          </>
-        )}
 
         <div className="flex flex-col gap-2 border-t border-border bg-muted/30 px-4 py-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>

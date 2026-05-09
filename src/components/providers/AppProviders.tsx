@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { I18nextProvider } from "react-i18next"
 
 import { AuthProvider } from "@/auth/AuthContext"
+import { PwaInstallPrompt } from "@/components/pwa/PwaInstallPrompt"
 import { ToastHost } from "@/components/providers/ToastHost"
 
 import i18n from "@/i18n/config"
@@ -18,6 +19,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       >
         <AuthProvider>
           <ToastHost />
+          <PwaInstallPrompt />
           {children}
         </AuthProvider>
       </NextThemesProvider>

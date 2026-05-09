@@ -1,8 +1,16 @@
+import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
+
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const pwaManifest = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "public/manifest.json"), "utf8"),
+) as NonNullable<import("vite-plugin-pwa").VitePWAOptions["manifest"]>
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,32 +20,49 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
-      manifest: {
-        name: "Qatar Food Safety Dashboard",
-        short_name: "Food Safety QA",
-        description:
-          "Official food safety inspections and establishments overview.",
-        theme_color: "#6B0F2A",
-        background_color: "#F8F5F0",
-        display: "standalone",
-        orientation: "portrait-primary",
-        lang: "ar",
-        dir: "rtl",
-        start_url: "/",
-        scope: "/",
-        icons: [
+      manifestFilename: "manifest.json",
+      includeAssets: [
+        "favicon.svg",
+        "logo.png",
+        "pwa-64.png",
+        "pwa-192.png",
+        "pwa-512.png",
+        "pwa-512-maskable.png",
+        "apple-touch-icon.png",
+      ],
+      manifest: pwaManifest,
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,json,webmanifest}"],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        navigateFallback: "/index.html",
+        navigateFallbackDenylist: [/^\/api\/?/],
+        runtimeCaching: [
           {
-            src: "/favicon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
-            purpose: "any",
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "google-fonts-stylesheets",
+              expiration: {
+                maxEntries: 8,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "google-fonts-webfonts",
+              expiration: {
+                maxEntries: 16,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+            },
           },
         ],
       },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      devOptions: {
+        enabled: false,
       },
     }),
   ],

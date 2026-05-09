@@ -525,6 +525,15 @@ export default {
     assignedAreasHint:
       "Choose which Main Areas this user may edit establishments in. Admins ignore this list.",
   },
+  pwa: {
+    installTitle: "Install Food Safety",
+    installBody:
+      "Add this app to your home screen for quicker access. Core screens work offline after the first visit.",
+    installCta: "Install app",
+    iosHint:
+      "On iPhone or iPad: tap Share, then “Add to Home Screen” to install سلامة الغذاء.",
+    dismiss: "Not now",
+  },
   errors: {
     title: "Something went wrong",
     body: "Try refreshing the page or come back later. If the problem persists, contact technical support.",

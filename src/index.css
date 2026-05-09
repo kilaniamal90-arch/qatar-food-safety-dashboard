@@ -220,11 +220,9 @@
     animation: trend-pulse-once 2s ease-in-out 1;
   }
 
-  @media (max-width: 899px) {
-    /* Momentum scrolling for horizontal swipe on iOS */
-    .establishments-table-scroll {
-      -webkit-overflow-scrolling: touch;
-    }
+  /* Momentum scrolling for status follow-up table (horizontal + vertical) */
+  .establishments-table-scroll {
+    -webkit-overflow-scrolling: touch;
   }
 
   @keyframes carousel-progress-fill {
