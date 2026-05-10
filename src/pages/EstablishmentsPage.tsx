@@ -12,7 +12,6 @@ import {
   Loader2Icon,
   Lock,
   MapPin,
-  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCwIcon,
@@ -131,18 +130,22 @@ const OPERATIONAL_STATUS_PDF_EN: Record<OperationalStatus, string> = {
 }
 
 const selectBase = cn(
-  "h-10 min-h-10 w-full appearance-none rounded-lg border border-border bg-card",
-  "px-3 py-2 pe-9 text-sm font-medium shadow-sm",
+  "h-9 min-h-9 w-full appearance-none rounded-lg border border-border bg-card",
+  "px-2 py-1.5 pe-8 text-xs font-medium shadow-sm",
+  "md:h-10 md:min-h-10 md:px-3 md:py-2 md:pe-9 md:text-sm",
   "transition-[border-color,box-shadow] duration-200 hover:border-primary",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   "cursor-pointer",
+  "placeholder:text-xs md:placeholder:text-sm",
 )
 
 const dateInputBase = cn(
-  "h-10 min-h-10 w-full rounded-lg border border-border bg-card",
-  "px-3 py-2 text-sm font-medium shadow-sm text-foreground",
+  "h-9 min-h-9 w-full rounded-lg border border-border bg-card",
+  "px-2 py-1.5 text-xs font-medium shadow-sm text-foreground",
+  "md:h-10 md:min-h-10 md:px-3 md:py-2 md:text-sm",
   "transition-[border-color,box-shadow] duration-200 hover:border-primary",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  "placeholder:text-xs md:placeholder:text-sm",
 )
 
 function ratingTranslationKey(r: InspectionRating): string {
@@ -300,8 +303,22 @@ export function EstablishmentsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteTargetRow, setDeleteTargetRow] = useState<EnrichedEstablishmentRow | null>(null)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [isMdUp, setIsMdUp] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  )
 
   const { user } = useAuth()
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const onChange = () => setIsMdUp(mq.matches)
+    onChange()
+    mq.addEventListener("change", onChange)
+    return () => mq.removeEventListener("change", onChange)
+  }, [])
+
+  const filtersPanelOpen = isMdUp || mobileFiltersOpen
 
   const listSentinelRef = useRef<HTMLDivElement>(null)
   const cardSentinelRef = useRef<HTMLDivElement>(null)
@@ -937,126 +954,178 @@ export function EstablishmentsPage() {
         </div>
       </header>
 
-      <Card className="border-border/80">
-        <CardContent className="space-y-4 p-4 md:p-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:flex-wrap xl:items-end">
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:gap-3">
-              <div className="min-w-[140px] space-y-1">
-                <Label htmlFor="est-area">{t("dataTable.filter.area")}</Label>
-                <div className="flex gap-2">
-                  <select
-                    id="est-area"
-                    value={area}
-                    disabled={areasLoading && areaRows.length === 0}
-                    onChange={(e) => setArea(e.target.value)}
-                    className={cn(selectBase, "min-w-0 flex-1")}
-                  >
-                    {areaOptions.map((a) => (
-                      <option key={a} value={a}>
-                        {areaSelectLabel(a)}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-10 min-h-10 w-10 shrink-0"
-                    onClick={() => refetchAreas()}
-                    disabled={areasLoading}
-                    aria-label={t("dashboard.refreshAreasAria")}
-                  >
-                    {areasLoading ? (
-                      <Loader2Icon className="size-4 animate-spin" aria-hidden />
-                    ) : (
-                      <RefreshCwIcon className="size-4" aria-hidden />
-                    )}
-                  </Button>
+      <Card className="border-border/80 shadow-sm">
+        <CardContent className="space-y-2 p-3 md:space-y-4 md:p-5">
+          <button
+            type="button"
+            id="establishments-filters-toggle"
+            aria-expanded={mobileFiltersOpen}
+            aria-controls="establishments-filters-panel"
+            className="flex w-full items-center justify-between rounded-lg border border-border bg-muted/35 px-3 py-2 text-start text-xs font-medium shadow-sm transition-colors hover:bg-muted/55 md:hidden"
+            onClick={() => setMobileFiltersOpen((v) => !v)}
+          >
+            <span>
+              {mobileFiltersOpen
+                ? t("establishmentsPage.filtersToggleHide")
+                : t("establishmentsPage.filtersToggleShow")}
+            </span>
+          </button>
+
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows] duration-300 ease-in-out",
+              filtersPanelOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+              "md:grid-rows-[1fr]",
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div
+                id="establishments-filters-panel"
+                role="search"
+                inert={!filtersPanelOpen && !isMdUp}
+                className={cn(
+                  "flex flex-col gap-2 md:gap-3 xl:flex-row xl:flex-wrap xl:items-end",
+                  "max-md:mt-1 max-md:rounded-xl max-md:border max-md:border-border/90 max-md:bg-card/80 max-md:p-3 max-md:shadow-sm",
+                )}
+              >
+                <div
+                  className={cn(
+                    "grid w-full min-w-0 gap-2 md:gap-3 xl:flex-1",
+                    "max-md:grid-cols-6",
+                    "md:grid md:grid-cols-2 lg:grid-cols-3",
+                    "xl:flex xl:flex-wrap",
+                  )}
+                >
+                  <div className="min-w-[140px] space-y-0.5 max-md:col-span-2 md:space-y-1">
+                    <Label className="max-md:text-xs" htmlFor="est-area">
+                      {t("dataTable.filter.area")}
+                    </Label>
+                    <div className="flex gap-1.5 md:gap-2">
+                      <select
+                        id="est-area"
+                        value={area}
+                        disabled={areasLoading && areaRows.length === 0}
+                        onChange={(e) => setArea(e.target.value)}
+                        className={cn(selectBase, "min-w-0 flex-1")}
+                      >
+                        {areaOptions.map((a) => (
+                          <option key={a} value={a}>
+                            {areaSelectLabel(a)}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 min-h-9 w-9 shrink-0 md:h-10 md:min-h-10 md:w-10"
+                        onClick={() => refetchAreas()}
+                        disabled={areasLoading}
+                        aria-label={t("dashboard.refreshAreasAria")}
+                      >
+                        {areasLoading ? (
+                          <Loader2Icon className="size-4 animate-spin" aria-hidden />
+                        ) : (
+                          <RefreshCwIcon className="size-4" aria-hidden />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="min-w-[140px] space-y-0.5 max-md:col-span-2 md:space-y-1">
+                    <Label className="max-md:text-xs" htmlFor="est-status">
+                      {t("dataTable.filter.status")}
+                    </Label>
+                    <select
+                      id="est-status"
+                      value={statusFilter}
+                      onChange={(e) =>
+                        setStatusFilter(e.target.value as OperationalStatus | "all")
+                      }
+                      className={selectBase}
+                    >
+                      <option value="all">{t("dataTable.filter.allStatuses")}</option>
+                      {STATUS_OPTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {statusLabel(s)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-[140px] space-y-0.5 max-md:col-span-2 md:space-y-1">
+                    <Label className="max-md:text-xs" htmlFor="est-rating">
+                      {t("dataTable.filter.rating")}
+                    </Label>
+                    <select
+                      id="est-rating"
+                      value={ratingFilter}
+                      onChange={(e) =>
+                        setRatingFilter(e.target.value as InspectionRating | "all")
+                      }
+                      className={selectBase}
+                    >
+                      {RATING_FILTERS.map((r) => (
+                        <option key={r} value={r}>
+                          {r === "all"
+                            ? t("dataTable.filter.allRatings")
+                            : t(ratingTranslationKey(r))}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="hidden min-w-[160px] space-y-1 md:block">
+                    <Label className="max-md:text-xs" htmlFor="est-sort">
+                      {t("dataTable.filter.sortBy")}
+                    </Label>
+                    <select
+                      id="est-sort"
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as DataTableSortMode)}
+                      className={selectBase}
+                    >
+                      {ESTABLISHMENT_SORT_MODES.map((m) => (
+                        <option key={m} value={m}>
+                          {t(`dataTable.sort.${m}`)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-[160px] space-y-0.5 max-md:col-span-3 md:space-y-1">
+                    <Label className="max-md:text-xs" htmlFor="est-insp-from">
+                      {t("dataTable.filter.dateFrom")}
+                    </Label>
+                    <Input
+                      id="est-insp-from"
+                      type="date"
+                      value={lastInspectionFrom}
+                      onChange={(e) => setLastInspectionFrom(e.target.value)}
+                      className={dateInputBase}
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="min-w-[160px] space-y-0.5 max-md:col-span-3 md:space-y-1">
+                    <Label className="max-md:text-xs" htmlFor="est-insp-to">
+                      {t("dataTable.filter.dateTo")}
+                    </Label>
+                    <Input
+                      id="est-insp-to"
+                      type="date"
+                      value={lastInspectionTo}
+                      onChange={(e) => setLastInspectionTo(e.target.value)}
+                      className={dateInputBase}
+                      dir="ltr"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="min-w-[140px] space-y-1">
-                <Label htmlFor="est-status">{t("dataTable.filter.status")}</Label>
-                <select
-                  id="est-status"
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(e.target.value as OperationalStatus | "all")
-                  }
-                  className={selectBase}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full shrink-0 border-[#8B1538]/30 text-[#8B1538] max-md:mt-1 max-md:text-xs md:w-auto xl:ms-auto"
+                  onClick={clearFilters}
                 >
-                  <option value="all">{t("dataTable.filter.allStatuses")}</option>
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {statusLabel(s)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="min-w-[140px] space-y-1">
-                <Label htmlFor="est-rating">{t("dataTable.filter.rating")}</Label>
-                <select
-                  id="est-rating"
-                  value={ratingFilter}
-                  onChange={(e) =>
-                    setRatingFilter(e.target.value as InspectionRating | "all")
-                  }
-                  className={selectBase}
-                >
-                  {RATING_FILTERS.map((r) => (
-                    <option key={r} value={r}>
-                      {r === "all"
-                        ? t("dataTable.filter.allRatings")
-                        : t(ratingTranslationKey(r))}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="min-w-[160px] space-y-1">
-                <Label htmlFor="est-sort">{t("dataTable.filter.sortBy")}</Label>
-                <select
-                  id="est-sort"
-                  value={sortMode}
-                  onChange={(e) => setSortMode(e.target.value as DataTableSortMode)}
-                  className={selectBase}
-                >
-                  {ESTABLISHMENT_SORT_MODES.map((m) => (
-                    <option key={m} value={m}>
-                      {t(`dataTable.sort.${m}`)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="min-w-[160px] space-y-1">
-                <Label htmlFor="est-insp-from">{t("dataTable.filter.dateFrom")}</Label>
-                <Input
-                  id="est-insp-from"
-                  type="date"
-                  value={lastInspectionFrom}
-                  onChange={(e) => setLastInspectionFrom(e.target.value)}
-                  className={dateInputBase}
-                  dir="ltr"
-                />
-              </div>
-              <div className="min-w-[160px] space-y-1">
-                <Label htmlFor="est-insp-to">{t("dataTable.filter.dateTo")}</Label>
-                <Input
-                  id="est-insp-to"
-                  type="date"
-                  value={lastInspectionTo}
-                  onChange={(e) => setLastInspectionTo(e.target.value)}
-                  className={dateInputBase}
-                  dir="ltr"
-                />
+                  {t("establishmentsPage.clearFilters")}
+                </Button>
               </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-[#8B1538]/30 text-[#8B1538] xl:ms-auto"
-              onClick={clearFilters}
-            >
-              {t("establishmentsPage.clearFilters")}
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -1327,16 +1396,10 @@ export function EstablishmentsPage() {
         {viewMode === "table" ? (
           <>
             <div
-              className="mb-2 flex items-start gap-2 rounded-lg border border-[#D4AF37]/40 bg-[#D4AF37]/10 px-3 py-2 text-sm lg:hidden"
-              role="status"
-            >
-              <MoreHorizontal className="size-4 shrink-0 text-[#8B1538]" aria-hidden />
-              <p>{t("dataTable.scrollHint")}</p>
-            </div>
-            <div
               className={cn(
                 "relative rounded-lg border border-border",
                 "max-h-[min(70vh,720px)] overflow-y-auto shadow-inner",
+                "[-webkit-overflow-scrolling:touch]",
               )}
             >
               <div className="overflow-x-auto overscroll-x-contain" dir={isRtl ? "rtl" : "ltr"}>

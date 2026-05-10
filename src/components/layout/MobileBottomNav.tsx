@@ -57,7 +57,6 @@ const NAV_ITEMS: readonly {
     path: "/settings",
     labelKey: "nav.bottom.settings",
     icon: SettingsIcon,
-    comingSoon: true,
   },
 ]
 

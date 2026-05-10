@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 const selectBase = cn(
   "h-10 w-full appearance-none rounded-lg border border-border bg-card",
   "px-4 py-2 pe-9 text-sm font-medium shadow-sm",
+  "max-md:h-9 max-md:px-3 max-md:py-1.5 max-md:pe-8 max-md:text-xs",
   "transition-[border-color,box-shadow,transform] duration-200 hover:border-primary",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   "cursor-pointer active:scale-[0.99] motion-reduce:active:scale-100",
@@ -23,6 +24,7 @@ function IconSelect<T extends string | number>({
   onChange,
   icon: Icon,
   disabled,
+  className,
 }: {
   id: string
   value: T
@@ -31,9 +33,11 @@ function IconSelect<T extends string | number>({
   onChange: (v: T) => void
   icon: ElementType
   disabled?: boolean
+  /** Merged onto the root wrapper (e.g. `w-full` for grid layouts). */
+  className?: string
 }) {
   return (
-    <div className="relative inline-flex items-center">
+    <div className={cn("relative inline-flex items-center", className)}>
       <Icon
         className="pointer-events-none absolute start-3 size-4 text-muted-foreground"
         aria-hidden
@@ -116,40 +120,51 @@ export function DashboardFilters({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div
+        className={cn(
+          "items-stretch max-md:grid max-md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] max-md:gap-2",
+          "md:flex md:flex-wrap md:items-center md:gap-3",
+        )}
+      >
         {/* Year select */}
         <label htmlFor="dash-year" className="sr-only">
           {t("dashboard.yearLabel")}
         </label>
-        <IconSelect
-          id="dash-year"
-          value={year}
-          options={yearOptions.length > 0 ? yearOptions : [String(new Date().getFullYear())]}
-          labelFn={(y) => `${t("dashboard.yearLabel")}: ${y}`}
-          onChange={onYearChange}
-          icon={CalendarIcon}
-          disabled={yearsLoading || yearOptions.length === 0}
-        />
+        <div className="max-md:min-w-0 max-md:w-full">
+          <IconSelect
+            className="w-full min-w-0 md:inline-flex md:w-auto"
+            id="dash-year"
+            value={year}
+            options={yearOptions.length > 0 ? yearOptions : [String(new Date().getFullYear())]}
+            labelFn={(y) => `${t("dashboard.yearLabel")}: ${y}`}
+            onChange={onYearChange}
+            icon={CalendarIcon}
+            disabled={yearsLoading || yearOptions.length === 0}
+          />
+        </div>
 
         {/* Area select */}
         <label htmlFor="dash-area" className="sr-only">
           {t("dashboard.areaLabel")}
         </label>
-        <IconSelect
-          id="dash-area"
-          value={area}
-          options={areaValues}
-          labelFn={(a) => areaOptionLabel(a, areas, i18n.language, t)}
-          onChange={onAreaChange}
-          icon={MapPinIcon}
-          disabled={areasLoading && areas.length === 0}
-        />
+        <div className="max-md:min-w-0 max-md:w-full">
+          <IconSelect
+            className="w-full min-w-0 md:inline-flex md:w-auto"
+            id="dash-area"
+            value={area}
+            options={areaValues}
+            labelFn={(a) => areaOptionLabel(a, areas, i18n.language, t)}
+            onChange={onAreaChange}
+            icon={MapPinIcon}
+            disabled={areasLoading && areas.length === 0}
+          />
+        </div>
 
         <Button
           type="button"
           variant="outline"
           size="icon"
-          className="size-10 shrink-0"
+          className="size-10 shrink-0 self-center max-md:size-9"
           onClick={() => onRefreshAreas()}
           disabled={areasLoading}
           aria-label={t("dashboard.refreshAreasAria")}

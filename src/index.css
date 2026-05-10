@@ -220,11 +220,6 @@
     animation: trend-pulse-once 2s ease-in-out 1;
   }
 
-  /* Momentum scrolling for status follow-up table (horizontal + vertical) */
-  .establishments-table-scroll {
-    -webkit-overflow-scrolling: touch;
-  }
-
   @keyframes carousel-progress-fill {
     from { transform: scaleX(0); }
     to { transform: scaleX(1); }

@@ -1,10 +1,4 @@
-import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowLeftRight,
-  FileSpreadsheet,
-  Filter,
-} from "lucide-react"
+import { AlertCircle, AlertTriangle, FileSpreadsheet, Filter } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -249,6 +243,7 @@ const LOAD_DELAY_MS = 300
 
 export function EstablishmentsTable({ data }: { data: TableRow[] }) {
   const { t, i18n } = useTranslation()
+  const isRtl = i18n.language?.toLowerCase().startsWith("ar") ?? false
   const [filterRating, setFilterRating] = useState<string>("all")
   const [filterAlert, setFilterAlert] = useState(true)
 
@@ -374,6 +369,12 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
     "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   )
 
+  const ratingSelectMobileCls = cn(
+    "flex h-9 min-w-[9rem] max-w-[12rem] shrink-0",
+    "appearance-none rounded-lg border border-border bg-card ps-9 pe-8 text-xs shadow-sm transition-colors hover:border-primary",
+    "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+  )
+
   const handleExportExcel = useCallback(async () => {
     if (filteredData.length === 0) return
     const stamp = new Date().toISOString().slice(0, 10)
@@ -391,11 +392,85 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
     })
   }, [filteredData, i18n.language, t])
 
+  const exportExcelButtonCls = cn(
+    "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors",
+    "hover:border-primary hover:bg-muted/40",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "md:gap-2 md:px-3 md:py-2 md:text-sm",
+  )
+
   return (
     <div className="mt-8">
       <Card className="overflow-hidden p-0">
         <div className="border-b border-border p-4 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          {/* Mobile: title, row1 = Excel + rating (scroll), row2 = re-inspection toggle full width */}
+          <div className="space-y-3 md:hidden">
+            <h3 className="text-lg font-bold leading-tight text-foreground sm:text-xl">
+              {t("table.title")}
+            </h3>
+            <div
+              className={cn(
+                "flex items-center gap-1.5",
+                isRtl ? "flex-row-reverse" : "flex-row",
+              )}
+            >
+              <div className="flex min-h-9 min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch] pb-0.5">
+                <div className="relative w-auto shrink-0">
+                  <Filter
+                    className="pointer-events-none absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <select
+                    id="est-table-rating-filter-mobile"
+                    value={filterRating}
+                    onChange={(e) => setFilterRating(e.target.value)}
+                    className={ratingSelectMobileCls}
+                    aria-label={t("table.filterByRating")}
+                  >
+                    <option value="all">{t("table.allRatings")}</option>
+                    {RATING_VALUES.map((r) => (
+                      <option key={r} value={r}>
+                        {t(ratingTranslationKey(r))}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleExportExcel()}
+                disabled={filteredData.length === 0}
+                className={exportExcelButtonCls}
+                aria-label={t("table.exportExcelAria")}
+              >
+                <FileSpreadsheet className="size-4 shrink-0" aria-hidden />
+                {t("table.exportExcel")}
+              </button>
+            </div>
+            <button
+              type="button"
+              aria-pressed={filterAlert}
+              onClick={() => setFilterAlert((v) => !v)}
+              className={cn(
+                "flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-xs font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                filterAlert
+                  ? "border-red-400 bg-red-100 font-semibold text-red-800 shadow-sm ring-2 ring-red-400/35 dark:border-red-600 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-500/35"
+                  : "border-border border-dashed bg-muted/40 text-muted-foreground hover:border-muted-foreground/40 hover:bg-muted/55 hover:text-foreground",
+              )}
+            >
+              <AlertTriangle className="size-4 shrink-0" aria-hidden />
+              <span className="text-center">{t("table.needsReinspectionOnly")}</span>
+              {filterAlert && reinspectionTotal > 0 ? (
+                <span className="ms-1 flex size-5 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                  {reinspectionTotal}
+                </span>
+              ) : null}
+            </button>
+          </div>
+
+          {/* Tablet & desktop: original layout */}
+          <div className="hidden md:flex md:flex-col md:gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <h3 className="text-xl font-bold text-foreground">
@@ -467,87 +542,78 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
         </div>
 
         <div className="-mx-px border-t border-border">
-          {/* Horizontal scroll below 900px — hint + momentum-friendly overflow */}
-          <div
-            role="note"
-            aria-label={t("table.swipeToScroll")}
-            className="hidden items-center justify-center border-b border-blue-100 bg-blue-50 px-4 py-2.5 text-center text-xs font-medium text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/50 dark:text-blue-100 max-[899px]:flex min-[900px]:hidden"
-          >
-            <span className="inline-flex flex-wrap items-center justify-center gap-2">
-              <ArrowLeftRight className="size-3.5 shrink-0 opacity-90" aria-hidden />
-              {t("table.swipeToScroll")}
-            </span>
-          </div>
           <div
             ref={scrollContainerRef}
             className={cn(
-              "establishments-table-scroll",
-              "max-h-[min(520px,58dvh)] md:max-h-[min(600px,70vh)]",
-              "overflow-y-auto overflow-x-auto",
-              "scroll-smooth overscroll-x-contain overscroll-y-contain",
-              "max-[899px]:scroll-smooth max-[899px]:overscroll-x-contain max-[899px]:[touch-action:pan-x_pan-y]",
+              "relative rounded-lg border border-border",
+              "max-h-[min(70vh,720px)] overflow-y-auto shadow-inner",
+              "[-webkit-overflow-scrolling:touch]",
             )}
           >
-          <table className="establishments-table w-full min-w-full max-[899px]:min-w-[940px] table-auto border-collapse">
-            <thead
-              className={cn(
-                "border-b-2 border-border bg-muted/50 dark:bg-muted/30",
-                "[&_th]:sticky [&_th]:top-0 [&_th]:z-20",
-                "[&_th]:bg-muted/95 [&_th]:shadow-[0_1px_0_0_hsl(var(--border))] dark:[&_th]:bg-muted/90",
-              )}
+            <div
+              className="overflow-x-auto overscroll-x-contain"
+              dir={isRtl ? "rtl" : "ltr"}
             >
-              <tr>
-                <th
-                  className={cn(
-                    theadCell,
-                    "text-center",
-                  )}
-                  scope="col"
-                >
-                  #
-                </th>
-                <th
-                  className={cn(
-                    theadCell,
-                    "min-w-[180px] max-w-[320px] max-[899px]:min-w-[200px] text-start",
-                  )}
-                  scope="col"
-                >
-                  {t("table.establishmentName")}
-                </th>
-                <th
-                  className={cn(theadCell, "min-w-[5.5rem] max-[899px]:min-w-[6rem] text-center")}
-                  scope="col"
-                >
-                  {t("table.area")}
-                </th>
-                <th
-                  className={cn(theadCell, "min-w-[7rem] text-center")}
-                  scope="col"
-                >
-                  {t("table.lastInspection")}
-                </th>
-                <th
-                  className={cn(theadCell, "min-w-[5rem] text-center")}
-                  scope="col"
-                >
-                  {t("table.daysAgo")}
-                </th>
-                <th
-                  className={cn(theadCell, "min-w-[10rem] max-[899px]:min-w-[10.5rem] text-center")}
-                  scope="col"
-                >
-                  {t("table.rating")}
-                </th>
-                <th
-                  className={cn(theadCell, "min-w-[8rem] max-[899px]:min-w-[11rem] text-center")}
-                  scope="col"
-                >
-                  {t("table.status")}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-card">
+              <table
+                className="w-full caption-bottom border-collapse text-sm"
+                style={{ minWidth: 940 }}
+              >
+                <thead className="sticky top-0 z-20 bg-card shadow-sm">
+                  <tr className="border-b border-border">
+                    <th
+                      className={cn(theadCell, "w-10 min-w-[2.5rem] bg-card px-2 text-center")}
+                      scope="col"
+                    >
+                      #
+                    </th>
+                    <th
+                      className={cn(
+                        theadCell,
+                        "min-w-[200px] max-w-[320px] bg-card text-start",
+                      )}
+                      scope="col"
+                    >
+                      {t("table.establishmentName")}
+                    </th>
+                    <th
+                      className={cn(
+                        theadCell,
+                        "min-w-[6rem] bg-card text-center",
+                      )}
+                      scope="col"
+                    >
+                      {t("table.area")}
+                    </th>
+                    <th
+                      className={cn(theadCell, "min-w-[7rem] bg-card text-center")}
+                      scope="col"
+                    >
+                      {t("table.lastInspection")}
+                    </th>
+                    <th
+                      className={cn(theadCell, "min-w-[5rem] bg-card text-center")}
+                      scope="col"
+                    >
+                      {t("table.daysAgo")}
+                    </th>
+                    <th
+                      className={cn(
+                        theadCell,
+                        "min-w-[10.5rem] bg-card text-center",
+                      )}
+                      scope="col"
+                    >
+                      {t("table.rating")}
+                    </th>
+                    <th
+                      className={cn(theadCell, "min-w-[11rem] bg-card text-center")}
+                      scope="col"
+                    >
+                      {t("table.status")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
               {filteredData.length === 0 ? (
                 <tr>
                   <td
@@ -566,8 +632,9 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
                   />
                 ))
               )}
-            </tbody>
-          </table>
+                </tbody>
+              </table>
+            </div>
 
             {filteredData.length > 0 && (
               <>
@@ -590,7 +657,7 @@ export function EstablishmentsTable({ data }: { data: TableRow[] }) {
                 )}
 
                 {!hasMore && displayedRows.length > 0 && (
-                  <div className="py-6 text-center">
+                  <div className="px-4 py-6 text-center sm:px-6">
                     <p className="text-sm text-muted-foreground">{t("table.endOfList")}</p>
                   </div>
                 )}

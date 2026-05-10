@@ -289,7 +289,74 @@ ${opts.inspections
 }
 
 /**
- * Load HTML via Blob URL (reliable in Chromium; document.write + noopener often yields a blank tab).
+ * When `window.open` is blocked (common on mobile Safari/Chrome), load the same blob document in a
+ * zero-size iframe and call print there — no pop-up, uses the native print sheet.
+ */
+function printEstablishmentFromBlobUrlInIframe(blobUrl: string): boolean {
+  const iframe = document.createElement("iframe")
+  iframe.setAttribute("aria-hidden", "true")
+  iframe.style.cssText =
+    "position:fixed;inset:0;width:0;height:0;border:0;visibility:hidden;pointer-events:none"
+
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    try {
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      /* ignore */
+    }
+    try {
+      iframe.remove()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    document.body.appendChild(iframe)
+  } catch {
+    try {
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      /* ignore */
+    }
+    return false
+  }
+
+  const runPrint = () => {
+    const win = iframe.contentWindow
+    if (!win) {
+      cleanup()
+      return
+    }
+
+    const onAfterPrint = () => {
+      cleanup()
+      win.removeEventListener("afterprint", onAfterPrint)
+    }
+    win.addEventListener("afterprint", onAfterPrint)
+    window.setTimeout(() => {
+      if (!cleaned) cleanup()
+    }, 120_000)
+
+    try {
+      win.focus()
+      win.print()
+    } catch {
+      cleanup()
+    }
+  }
+
+  iframe.addEventListener("load", () => window.setTimeout(runPrint, 250), { once: true })
+  iframe.src = blobUrl
+
+  return true
+}
+
+/**
+ * Load HTML via Blob URL (new tab). If pop-ups are blocked, fall back to a hidden iframe + print.
  */
 export function openEstablishmentPrintWindow(html: string): boolean {
   if (!html.trim()) {
@@ -304,11 +371,12 @@ export function openEstablishmentPrintWindow(html: string): boolean {
   const w = window.open(url, "_blank", "width=960,height=840")
 
   if (!w) {
-    URL.revokeObjectURL(url)
     if (import.meta.env.DEV) {
-      console.warn("[establishmentPrint] window.open returned null (pop-up blocked?)")
+      console.warn(
+        "[establishmentPrint] window.open returned null (pop-up blocked?) — using iframe print",
+      )
     }
-    return false
+    return printEstablishmentFromBlobUrlInIframe(url)
   }
 
   let urlRevoked = false

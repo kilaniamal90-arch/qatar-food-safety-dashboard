@@ -769,6 +769,22 @@ export function mapSortToViewColumns(
   }
 }
 
+/** Resolve filter label to FK: `establishments_with_latest_inspection` exposes `operational_status_id`, not flattened name columns. */
+async function fetchOperationalStatusIdByNameEn(
+  supabase: SupabaseClient,
+  nameEn: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("operational_statuses")
+    .select("id")
+    .eq("name_en", nameEn)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  const idRaw = (data as { id?: unknown } | null)?.id
+  return idRaw != null && String(idRaw).trim() !== "" ? String(idRaw) : null
+}
+
 export async function fetchEstablishmentsViewFiltered(
   supabase: SupabaseClient,
   filters: EstablishmentsViewFilters,
@@ -787,7 +803,9 @@ export async function fetchEstablishmentsViewFiltered(
   if (areaId) q = q.eq("area_id", areaId)
 
   if (statusEn && statusEn !== "all") {
-    q = q.eq("operational_status_name_en", statusEn)
+    const statusId = await fetchOperationalStatusIdByNameEn(supabase, statusEn)
+    if (!statusId) return []
+    q = q.eq("operational_status_id", statusId)
   }
 
   if (ratingEn && ratingEn !== "all") {

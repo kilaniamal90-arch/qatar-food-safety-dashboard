@@ -66,6 +66,16 @@ const RATING_HEX: Record<InspectionRating, string> = {
   "Very Poor": "#991b1b",
 }
 
+/** Y-axis tick value (score) → canonical rating; score 1 = bottom (worst), 6 = top (best). */
+const SCORE_TO_RATING: Record<number, InspectionRating> = {
+  1: "Very Poor",
+  2: "Poor",
+  3: "Fair",
+  4: "Good",
+  5: "Very Good",
+  6: "Excellent",
+}
+
 const INSPECTIONS_PAGE = 5
 
 /** dd/mm/yyyy for print issue line; optional Eastern Arabic numerals (٠–٩). */
@@ -111,6 +121,58 @@ function ratingTranslationKey(r: InspectionRating): string {
     "Very Poor": "ratings.veryPoor",
   }
   return map[r]
+}
+
+function RatingYAxisTick({
+  x,
+  y,
+  payload,
+  showNames,
+  orientation,
+  t: tl,
+}: {
+  x: number
+  y: number
+  payload: { value: number }
+  showNames: boolean
+  orientation: "left" | "right"
+  t: (key: string) => string
+}) {
+  const v = Number(payload?.value)
+  if (!Number.isFinite(v)) return null
+  const anchor = orientation === "right" ? "start" : "end"
+  const textX = x + (orientation === "right" ? 4 : -4)
+  if (!showNames) {
+    return (
+      <text
+        x={textX}
+        y={y}
+        dy={3}
+        fill="#737373"
+        fontSize={11}
+        textAnchor={anchor}
+      >
+        {v}
+      </text>
+    )
+  }
+  const rating = SCORE_TO_RATING[v]
+  if (!rating) return null
+  const label = tl(ratingTranslationKey(rating))
+  const fill = RATING_HEX[rating]
+  return (
+    <text
+      x={textX}
+      y={y}
+      dy={3}
+      fill={fill}
+      fontSize={11}
+      fontWeight={600}
+      textAnchor={anchor}
+    >
+      {label}
+    </text>
+  )
 }
 
 function DetailField({
@@ -360,29 +422,59 @@ export function EstablishmentDetailSheet({
     const chrono = [...dated].sort(
       (a, b) => (a.inspectionDate!.getTime() - b.inspectionDate!.getTime()),
     )
-    const series = chrono.map((i) => ({
-      id: i.id,
-      ts: i.inspectionDate!.getTime(),
-      dateLabel: formatInspectionDateDdMmYyyy(
-        i.inspectionDate,
-        t("common.dateUnknown"),
-      ),
-      score: RATING_SCORE[i.rating],
-      rating: i.rating,
-      fill: i.ratingColor?.trim() || RATING_HEX[i.rating],
-      name: ratingDisplay(i) ?? t(ratingTranslationKey(i.rating)),
-    }))
+    const langAr = i18n.language.startsWith("ar")
+    const series = chrono.map((i) => {
+      const ratingLabelLocalized = langAr
+        ? i.ratingNameAr?.trim() || t(ratingTranslationKey(i.rating))
+        : i.ratingNameEn?.trim() || t(ratingTranslationKey(i.rating))
+      return {
+        id: i.id,
+        ts: i.inspectionDate!.getTime(),
+        dateLabel: formatInspectionDateDdMmYyyy(
+          i.inspectionDate,
+          t("common.dateUnknown"),
+        ),
+        score: RATING_SCORE[i.rating],
+        rating: i.rating,
+        fill: i.ratingColor?.trim() || RATING_HEX[i.rating],
+        name: ratingDisplay(i) ?? t(ratingTranslationKey(i.rating)),
+        ratingLabelLocalized,
+        inspector: i.inspector?.trim() || "",
+      }
+    })
     if (import.meta.env.DEV) {
       const datedCount = inspections.filter((i) => i.inspectionDate != null).length
       console.log("[establishmentChart] inspections:", inspections.length, "dated raw:", datedCount, "chart points:", series.length)
     }
     return series
-  }, [inspections, ratingDisplay, t])
+  }, [inspections, ratingDisplay, t, i18n.language])
 
   const chartXTickFormatter = useCallback(
     (value: string) => chartSeries.find((p) => p.id === value)?.dateLabel ?? value,
     [chartSeries],
   )
+
+  /** English: chronological left→right. Arabic: reverse series so X order is newest→oldest left→right under LTR plot. */
+  const chartDataForDisplay = useMemo(() => {
+    if (!isRtl) return chartSeries
+    return [...chartSeries].reverse()
+  }, [chartSeries, isRtl])
+
+  const [isMdUp, setIsMdUp] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  )
+  const [forceNamedYAxisForCapture, setForceNamedYAxisForCapture] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const fn = () => setIsMdUp(mq.matches)
+    mq.addEventListener("change", fn)
+    return () => mq.removeEventListener("change", fn)
+  }, [])
+
+  const showRatingNamesOnY = isMdUp || forceNamedYAxisForCapture
+  const yAxisOrientation = isRtl ? "right" : "left"
+  const yAxisWidth = showRatingNamesOnY ? (isRtl ? 118 : 94) : 32
 
   const handlePrint = async () => {
     if (!establishment) return
@@ -391,7 +483,10 @@ export function EstablishmentDetailSheet({
     let chartImageDataUrl: string | null = null
     if (chartSeries.length >= 2) {
       const prevTab = tab
-      flushSync(() => setTab("chart"))
+      flushSync(() => {
+        setForceNamedYAxisForCapture(true)
+        setTab("chart")
+      })
       /* Let tab layout + Recharts measure and finish line animation before capture */
       await new Promise<void>((r) => window.setTimeout(r, 500))
       await new Promise<void>((resolve) => {
@@ -423,7 +518,10 @@ export function EstablishmentDetailSheet({
           }
         }
       }
-      flushSync(() => setTab(prevTab))
+      flushSync(() => {
+        setForceNamedYAxisForCapture(false)
+        setTab(prevTab)
+      })
     }
     const fields: EstablishmentPrintField[] = []
     const push = (label: string, value: unknown) => {
@@ -518,7 +616,7 @@ export function EstablishmentDetailSheet({
     })
 
     if (!openEstablishmentPrintWindow(html)) {
-      toast.error(t("establishmentsPage.detail.printPopupBlocked"))
+      toast.error(t("establishmentsPage.detail.printFailed"))
     }
   }
 
@@ -839,10 +937,17 @@ export function EstablishmentDetailSheet({
                     data-print-chart-capture=""
                     className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-card/40 p-2 dark:bg-card/25"
                   >
+                    {/* Time axis must stay LTR in all locales; Y-axis side stays RTL-aware via orientation */}
+                    <div dir="ltr" className="h-full w-full min-w-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
-                        data={chartSeries}
-                        margin={{ top: 12, right: 12, left: 12, bottom: 12 }}
+                        data={chartDataForDisplay}
+                        margin={{
+                          top: 12,
+                          bottom: 12,
+                          left: yAxisOrientation === "left" ? (showRatingNamesOnY ? 4 : 10) : 10,
+                          right: yAxisOrientation === "right" ? (showRatingNamesOnY ? 4 : 10) : 12,
+                        }}
                       >
                         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                         <XAxis
@@ -857,17 +962,55 @@ export function EstablishmentDetailSheet({
                         <YAxis
                           domain={[1, 6]}
                           ticks={[1, 2, 3, 4, 5, 6]}
-                          tick={{ fontSize: 11 }}
-                          width={28}
+                          orientation={yAxisOrientation}
+                          width={yAxisWidth}
+                          tick={(tickProps) => {
+                            const p = tickProps.payload as { value?: number }
+                            return (
+                              <RatingYAxisTick
+                                x={tickProps.x}
+                                y={tickProps.y}
+                                payload={{ value: Number(p?.value ?? 0) }}
+                                showNames={showRatingNamesOnY}
+                                orientation={yAxisOrientation}
+                                t={t}
+                              />
+                            )
+                          }}
                         />
                         <Tooltip
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null
                             const p = payload[0]?.payload as (typeof chartSeries)[0]
+                            const hasInspector =
+                              Boolean(p.inspector) &&
+                              p.inspector !== "—" &&
+                              p.inspector.length > 0
                             return (
-                              <div className="rounded-md border bg-popover px-3 py-2 text-xs shadow-md">
-                                <p className="font-semibold">{p.dateLabel}</p>
-                                <p className="text-muted-foreground">{p.name}</p>
+                              <div
+                                className="max-w-[min(90vw,18rem)] rounded-md border bg-popover px-3 py-2 text-xs shadow-md"
+                                dir={isRtl ? "rtl" : "ltr"}
+                              >
+                                <p className="font-semibold text-foreground">
+                                  {t("establishmentsPage.detail.chartTooltipDate", {
+                                    date: p.dateLabel,
+                                  })}
+                                </p>
+                                <p
+                                  className="mt-1 font-medium"
+                                  style={{ color: p.fill ?? "#8B1538" }}
+                                >
+                                  {t("establishmentsPage.detail.chartTooltipRating", {
+                                    rating: p.ratingLabelLocalized,
+                                  })}
+                                </p>
+                                {hasInspector ? (
+                                  <p className="mt-0.5 break-words text-muted-foreground">
+                                    {t("establishmentsPage.detail.chartTooltipInspector", {
+                                      inspector: p.inspector,
+                                    })}
+                                  </p>
+                                ) : null}
                               </div>
                             )
                           }}
@@ -901,6 +1044,7 @@ export function EstablishmentDetailSheet({
                         />
                       </LineChart>
                     </ResponsiveContainer>
+                    </div>
                   </div>
                 )}
               </TabsContent>

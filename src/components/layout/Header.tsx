@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
-import {
-  GlobeIcon,
-  LogOutIcon,
-  MenuIcon,
-  MonitorIcon,
-  MoonIcon,
-  SunIcon,
-} from "lucide-react"
+import { GlobeIcon, MenuIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
 
 import { SidebarBrand, SidebarNav } from "@/components/layout/Sidebar"
@@ -35,12 +27,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { setLocale } from "@/i18n/config"
-import { useAuth } from "@/auth/AuthContext"
 
 export function AppHeader({ title }: { title: string }) {
   const { t, i18n } = useTranslation()
-  const navigate = useNavigate()
-  const { signOut, user } = useAuth()
   const { theme, setTheme } = useTheme()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -159,25 +148,6 @@ export function AppHeader({ title }: { title: string }) {
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  type="button"
-                  className="inline-flex"
-                  onClick={() => {
-                    void signOut().then(() => navigate("/login", { replace: true }))
-                  }}
-                  aria-label={t("header.signOut")}
-                  title={user.email ?? user.name}
-                >
-                  <LogOutIcon className="size-4" aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t("header.signOut")}</TooltipContent>
-            </Tooltip>
           </div>
         </div>
       </header>

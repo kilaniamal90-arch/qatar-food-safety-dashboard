@@ -27,7 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/establishments", labelKey: "nav.establishments", icon: Building2Icon },
   { to: "/import", labelKey: "nav.importData", icon: UploadIcon, requiresImport: true },
   { to: "/admin", labelKey: "nav.admin", icon: ShieldCheckIcon, adminOnly: true },
-  { to: "/settings", labelKey: "nav.settings", icon: SettingsIcon, comingSoon: true },
+  { to: "/settings", labelKey: "nav.settings", icon: SettingsIcon },
 ]
 
 const navItemBase =
