@@ -19,7 +19,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       manifestFilename: "manifest.json",
       includeAssets: [
         "favicon.svg",
@@ -32,6 +32,7 @@ export default defineConfig({
       ],
       manifest: pwaManifest,
       workbox: {
+        skipWaiting: false,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,json,webmanifest}"],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: "/index.html",

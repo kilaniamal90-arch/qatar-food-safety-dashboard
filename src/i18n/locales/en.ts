@@ -559,6 +559,9 @@ export default {
     iosHint:
       "On iPhone or iPad: tap Share, then “Add to Home Screen” to install سلامة الغذاء.",
     dismiss: "Not now",
+    updateAria: "App update available",
+    updateAvailable: "New update available - Click to update",
+    updateCta: "Update",
   },
   errors: {
     title: "Something went wrong",

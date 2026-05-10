@@ -560,6 +560,9 @@ export const ar = {
     installCta: "تثبيت",
     iosHint: "على آيفون أو آيباد: اضغط Share ثم «إضافة إلى الشاشة الرئيسية».",
     dismiss: "ليس الآن",
+    updateAria: "يتوفر تحديث للتطبيق",
+    updateAvailable: "يوجد تحديث جديد - اضغط للتحديث",
+    updateCta: "تحديث",
   },
   errors: {
     title: "حدث خطأ غير متوقع",
