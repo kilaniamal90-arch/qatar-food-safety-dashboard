@@ -9,8 +9,10 @@ import { cn } from "@/lib/utils"
 
 const selectBase = cn(
   "h-10 w-full appearance-none rounded-lg border border-border bg-card",
-  "px-4 py-2 pe-9 text-sm font-medium shadow-sm",
-  "max-md:h-9 max-md:px-3 max-md:py-1.5 max-md:pe-8 max-md:text-xs",
+  "py-2 text-sm font-medium shadow-sm",
+  /* Extra start padding so label text clears icons (mobile used to collapse ps via px-3). */
+  "ps-11 pe-10",
+  "max-md:h-9 max-md:py-1.5 max-md:ps-11 max-md:pe-9 max-md:text-xs",
   "transition-[border-color,box-shadow,transform] duration-200 hover:border-primary",
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
   "cursor-pointer active:scale-[0.99] motion-reduce:active:scale-100",
@@ -39,7 +41,7 @@ function IconSelect<T extends string | number>({
   return (
     <div className={cn("relative inline-flex items-center", className)}>
       <Icon
-        className="pointer-events-none absolute start-3 size-4 text-muted-foreground"
+        className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground max-md:start-2.5 max-md:size-3.5"
         aria-hidden
       />
       <select
@@ -53,7 +55,7 @@ function IconSelect<T extends string | number>({
           ) as T
           onChange(parsed)
         }}
-        className={cn(selectBase, "ps-9", disabled && "cursor-not-allowed opacity-60")}
+        className={cn(selectBase, disabled && "cursor-not-allowed opacity-60")}
       >
         {options.map((opt) => (
           <option key={String(opt)} value={String(opt)}>
@@ -62,7 +64,7 @@ function IconSelect<T extends string | number>({
         ))}
       </select>
       <ChevronDownIcon
-        className="pointer-events-none absolute end-3 size-4 text-muted-foreground"
+        className="pointer-events-none absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground max-md:end-2 max-md:size-3.5"
         aria-hidden
       />
     </div>

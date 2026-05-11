@@ -907,8 +907,6 @@ export const ar = {
     viewTable: "📊 جدول",
     viewModes: "وضع العرض",
     quickRatings: "تصفية سريعة حسب التقييم",
-    alertBanner: "{{count}} منشأة تحتاج إعادة تفتيش",
-    alertBannerHint: "راجع هذه المنشآت وحدد مواعيد متابعة التفتيش عند الحاجة.",
     clearFilters: "مسح التصفية",
     filtersToggleShow: "🔍 الفلاتر ▼",
     filtersToggleHide: "🔍 الفلاتر ▲",

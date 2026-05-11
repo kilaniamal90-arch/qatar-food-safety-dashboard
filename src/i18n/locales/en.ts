@@ -916,9 +916,6 @@ export default {
     viewTable: "📊 Table",
     viewModes: "View mode",
     quickRatings: "Quick filter by rating",
-    alertBanner: "{{count}} establishments need re-inspection",
-    alertBannerHint:
-      "Review these establishments and schedule follow-up inspections when needed.",
     clearFilters: "Clear filters",
     filtersToggleShow: "🔍 Filters ▼",
     filtersToggleHide: "🔍 Filters ▲",

@@ -51,7 +51,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { InspectionRating, OperationalStatus } from "@/data/rawData"
-import { shouldAlert } from "@/data/establishmentsTable"
 import { useFilterAreas } from "@/hooks/useFilterAreas"
 import { useEstablishments } from "@/hooks/useEstablishments"
 import type { DataTableSortMode, EnrichedEstablishmentRow } from "@/lib/dataTableModel"
@@ -285,7 +284,6 @@ export function EstablishmentsPage() {
   const [quickRow, setQuickRow] = useState<EnrichedEstablishmentRow | null>(null)
   const [addInspectionTarget, setAddInspectionTarget] =
     useState<EnrichedEstablishmentRow | null>(null)
-  const [alertBannerOpen, setAlertBannerOpen] = useState(true)
   const [detailReloadKey, setDetailReloadKey] = useState(0)
   const [showAddEstablishment, setShowAddEstablishment] = useState(false)
   const [showEditEstablishment, setShowEditEstablishment] = useState(false)
@@ -595,15 +593,6 @@ export function EstablishmentsPage() {
     }
     return m
   }, [sortedAll])
-
-  const reinspectionCount = useMemo(
-    () =>
-      sortedAll.filter((row) => {
-        if (!row.latestRating || row.daysAgo == null) return false
-        return shouldAlert(row.latestRating, row.daysAgo).needsAlert
-      }).length,
-    [sortedAll],
-  )
 
   const clearFilters = () => {
     setSearch("")
@@ -1084,28 +1073,13 @@ export function EstablishmentsPage() {
         </CardContent>
       </Card>
 
-      {reinspectionCount > 0 ? (
-        <details
-          open={alertBannerOpen}
-          onToggle={(e) => setAlertBannerOpen((e.target as HTMLDetailsElement).open)}
-          className="rounded-xl border border-amber-500/40 bg-amber-50/70 dark:border-amber-700/40 dark:bg-amber-950/25"
-        >
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-amber-950 dark:text-amber-100">
-            ⚠️ {t("establishmentsPage.alertBanner", { count: reinspectionCount })}
-          </summary>
-          <p className="border-t border-amber-500/25 px-4 pb-3 pt-2 text-sm text-amber-950/85 dark:text-amber-100/85">
-            {t("establishmentsPage.alertBannerHint")}
-          </p>
-        </details>
-      ) : null}
-
       <section aria-label={t("establishmentsPage.quickRatings")}>
-        <p className="mb-2 text-sm font-medium text-muted-foreground">
+        <p className="mb-2 text-sm font-medium text-muted-foreground max-md:text-xs">
           {t("establishmentsPage.quickRatings")}
         </p>
         <div
           className={cn(
-            "flex flex-wrap gap-2",
+            "flex flex-wrap gap-1.5 md:gap-2",
             isRtl && "flex-row-reverse",
           )}
         >
@@ -1114,7 +1088,7 @@ export function EstablishmentsPage() {
             variant={ratingFilter === "all" ? "default" : "outline"}
             size="sm"
             className={cn(
-              "font-semibold",
+              "font-semibold max-md:h-7 max-md:rounded-md max-md:px-2 max-md:py-1 max-md:text-xs",
               ratingFilter === "all" && "bg-[#8B1538] hover:bg-[#8B1538]/90",
             )}
             onClick={() => setRatingFilter("all")}
@@ -1130,7 +1104,10 @@ export function EstablishmentsPage() {
                 type="button"
                 variant={active ? "default" : "outline"}
                 size="sm"
-                className={cn("font-semibold", active && "border-transparent text-white hover:opacity-90")}
+                className={cn(
+                  "font-semibold max-md:h-7 max-md:rounded-md max-md:px-2 max-md:py-1 max-md:text-xs",
+                  active && "border-transparent text-white hover:opacity-90",
+                )}
                 style={active ? { backgroundColor: RATING_HEX[r], color: "#fff" } : undefined}
                 onClick={() => setRatingFilter(r)}
               >
