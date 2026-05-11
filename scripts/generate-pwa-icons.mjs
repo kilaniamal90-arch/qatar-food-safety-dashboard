@@ -1,5 +1,5 @@
 /**
- * Generates PWA / Apple touch icons from public/logo.png.
+ * Generates PWA / Apple touch icons from public/logo.png (shield on cream).
  * Run automatically via npm prebuild.
  */
 import { existsSync } from "node:fs"
@@ -11,39 +11,46 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, "..")
 const src = path.join(root, "public", "logo.png")
 
+const CREAM = { r: 255, g: 248, b: 220, alpha: 1 }
+
 if (!existsSync(src)) {
   console.error("generate-pwa-icons: missing public/logo.png")
   process.exit(1)
 }
 
-async function out(file, width, height = width, extendMaskable = false) {
-  let pipeline
-  if (extendMaskable && width === 512) {
-    const inner = Math.round(width * 0.62)
-    const img = await sharp(src)
-      .ensureAlpha()
-      .resize(inner, inner, { fit: "cover", position: "centre" })
-      .toBuffer()
-    const pad = Math.round((width - inner) / 2)
-    pipeline = sharp(img).extend({
-      top: pad,
-      bottom: pad,
-      left: pad,
-      right: pad,
-      background: { r: 255, g: 255, b: 255, alpha: 1 },
-    })
-  } else {
-    pipeline = sharp(src).ensureAlpha().resize(width, height, {
-      fit: "cover",
+/**
+ * @param {string} file
+ * @param {number} size
+ * @param {number} padding px on each side
+ */
+async function renderIcon(file, size, padding) {
+  const inner = size - 2 * padding
+  if (inner < 1) {
+    console.error("generate-pwa-icons: inner size < 1 for", file)
+    process.exit(1)
+  }
+
+  const fg = await sharp(src)
+    .ensureAlpha()
+    .resize(inner, inner, {
+      fit: "contain",
+      background: CREAM,
       position: "centre",
     })
-  }
-  await pipeline.png().toFile(path.join(root, "public", file))
-  console.log("wrote", file)
+    .toBuffer()
+
+  await sharp({
+    create: { width: size, height: size, channels: 4, background: CREAM },
+  })
+    .composite([{ input: fg, left: padding, top: padding }])
+    .png()
+    .toFile(path.join(root, "public", file))
+
+  console.log("wrote", file, `${size}x${size} pad=${padding}`)
 }
 
-await out("pwa-64.png", 64)
-await out("pwa-192.png", 192)
-await out("pwa-512.png", 512)
-await out("pwa-512-maskable.png", 512, 512, true)
-await out("apple-touch-icon.png", 180)
+await renderIcon("pwa-64.png", 64, 8)
+await renderIcon("pwa-192.png", 192, 24)
+await renderIcon("pwa-512.png", 512, 64)
+await renderIcon("apple-touch-icon.png", 180, 20)
+await renderIcon("pwa-512-maskable.png", 512, 80)
