@@ -121,14 +121,6 @@ const ESTABLISHMENT_SORT_MODES: DataTableSortMode[] = [
   "count_least",
 ]
 
-/** English operational status labels for PDF export (avoid i18n keys). */
-const OPERATIONAL_STATUS_PDF_EN: Record<OperationalStatus, string> = {
-  Open: "Open",
-  Closed: "Closed",
-  "Temporary Closed": "Temporary Closed",
-  "Open Soon": "Open Soon",
-}
-
 const selectBase = cn(
   "h-9 min-h-9 w-full appearance-none rounded-lg border border-border bg-card",
   "px-2 py-1.5 pe-8 text-xs font-medium shadow-sm",
@@ -276,8 +268,7 @@ export function EstablishmentsPage() {
   const { t, i18n } = useTranslation()
   const isRtl = i18n.language.startsWith("ar")
   const langAr = i18n.language.toLowerCase().startsWith("ar")
-  const showPdfExport = !langAr
-  const tEn = i18n.getFixedT(null, "translation", "en")
+  const isEnglishUi = i18n.language.toLowerCase().startsWith("en")
   const location = useLocation()
   const prevPathRef = useRef<string | null>(null)
 
@@ -540,21 +531,6 @@ export function EstablishmentsPage() {
     [t],
   )
 
-  const pdfColTitles: EstablishmentsExportColumnTitles = useMemo(
-    () => ({
-      rowNum: "#",
-      name: tEn("dataTable.col.name"),
-      area: tEn("dataTable.col.area"),
-      location: tEn("dataTable.col.location"),
-      status: tEn("dataTable.col.status"),
-      lastInspection: tEn("dataTable.col.lastInspection"),
-      daysAgo: tEn("dataTable.col.daysAgo"),
-      rating: tEn("dataTable.col.rating"),
-      inspectionCount: tEn("dataTable.col.inspectionCount"),
-    }),
-    [tEn],
-  )
-
   const buildExcelExportRows = useCallback((): EstablishmentsExportRow[] => {
     return sortedAll.map((row, i) => {
       const e = row.establishment
@@ -569,6 +545,8 @@ export function EstablishmentsPage() {
         daysAgo: daysAgoLabel(row.daysAgo),
         rating: ratingExportLabel(row),
         inspectionCount: String(row.inspectionCount),
+        statusKey: e.operationalStatus,
+        ratingKey: row.latestRating,
       }
     })
   }, [
@@ -580,50 +558,26 @@ export function EstablishmentsPage() {
     ratingExportLabel,
   ])
 
-  const buildPdfExportRows = useCallback((): EstablishmentsExportRow[] => {
-    const daysEn = (days: number | null) => {
-      if (days == null) return tEn("dataTable.noInspection")
-      const unit = days === 1 ? tEn("dataTable.day") : tEn("dataTable.days")
-      return `${days}\u00A0${unit}`
-    }
-    const ratingEnText = (row: EnrichedEstablishmentRow) =>
-      row.latestRatingNameEn?.trim() ||
-      (row.latestRating != null ? row.latestRating : tEn("dataTable.noRating"))
-
-    return sortedAll.map((row, i) => {
-      const e = row.establishment
-      return {
-        rowNum: i + 1,
-        name: e.nameEn?.trim() || e.name,
-        area: row.areaNameEn?.trim() || "—",
-        location: e.location?.trim() ?? "",
-        status: OPERATIONAL_STATUS_PDF_EN[e.operationalStatus],
-        lastInspection: row.lastInspectionFormatted,
-        daysAgo: daysEn(row.daysAgo),
-        rating: ratingEnText(row),
-        inspectionCount: String(row.inspectionCount),
-      }
-    })
-  }, [sortedAll, tEn])
-
   const handleExportExcel = () => {
-    try {
-      const rows = buildExcelExportRows()
-      exportEstablishmentsExcel(rows, excelColTitles, "establishments")
-      toast.success(t("establishmentsPage.export.success", { count: rows.length }))
-    } catch {
-      toast.error(t("establishmentsPage.export.failed"))
-    }
+    void (async () => {
+      try {
+        const rows = buildExcelExportRows()
+        await exportEstablishmentsExcel(rows, excelColTitles, "establishments")
+        toast.success(t("establishmentsPage.export.success", { count: rows.length }))
+      } catch {
+        toast.error(t("establishmentsPage.export.failed"))
+      }
+    })()
   }
 
   const handleExportPdf = () => {
     try {
-      const rows = buildPdfExportRows()
+      const rows = buildExcelExportRows()
       exportEstablishmentsPdf(
         rows,
-        pdfColTitles,
-        tEn("dataTable.pdfHeader1"),
-        tEn("dataTable.pdfHeader2"),
+        excelColTitles,
+        t("dataTable.pdfHeader1"),
+        t("dataTable.pdfHeader2"),
         "establishments",
       )
       toast.success(t("establishmentsPage.export.success", { count: rows.length }))
@@ -929,7 +883,7 @@ export function EstablishmentsPage() {
               <FileSpreadsheet className="size-4 shrink-0" aria-hidden />
               <span>{t("establishmentsPage.export.excel")}</span>
             </Button>
-            {showPdfExport ? (
+            {isEnglishUi ? (
               <Button
                 type="button"
                 variant="outline"

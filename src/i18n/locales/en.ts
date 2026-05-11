@@ -964,6 +964,7 @@ export default {
     },
     detail: {
       print: "Print",
+      printPreparing: "Preparing…",
       printHeaderTitle: "Food Safety - Local Inspection",
       printActivityUnspecified: "Activity type not specified",
       printIssueDate: "Issue Date",
@@ -978,6 +979,11 @@ export default {
       printColInspector: "Inspector",
       printColRef: "Reference",
       printColTask: "Task type",
+      chartShowingLast: "Showing last {{count}} inspections (most recent first).",
+      chartShowingLastTruncated:
+        "Showing last {{shown}} of {{total}} dated inspections (most recent first).",
+      chartCaptureFallbackToast:
+        "Chart snapshot could not be captured; the text summary below lists the same inspections.",
       chartNotEnoughPrint: "Not enough inspections for chart",
       tabInfo: "Info",
       tabInspections: "Inspections",

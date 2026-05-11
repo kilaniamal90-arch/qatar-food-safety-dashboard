@@ -120,7 +120,7 @@ ${opts.inspections
       : ""
 
   const chartImg = opts.chartImageDataUrl?.trim()
-    ? `<div class="chart-img-wrap"><img src="${opts.chartImageDataUrl}" alt="" class="print-chart-img"/></div>`
+    ? `<div class="chart-container-print chart-img-wrap"><img src="${opts.chartImageDataUrl}" alt="Rating trend chart" class="print-chart-img"/></div>`
     : ""
 
   const trendPageInner =
@@ -140,10 +140,16 @@ ${opts.inspections
 <html dir="${opts.dir}" lang="${escapeHtml(opts.lang)}">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width, initial-scale=0.95"/>
 <title>${escapeHtml(opts.documentTitle)}</title>
 <style>
   * { box-sizing: border-box; }
+  html, body {
+    width: 210mm;
+    max-width: 100%;
+    height: auto;
+    min-height: 297mm;
+  }
   body {
     font-family: "Segoe UI", Arial, sans-serif;
     padding: 24px;
@@ -224,15 +230,25 @@ ${opts.inspections
     page-break-before: always;
     break-before: page;
     padding-top: 8px;
+    width: 100%;
+    max-width: 100%;
+  }
+  .chart-container-print.chart-img-wrap {
+    width: 100%;
+    margin: 20px auto;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .chart-img-wrap {
     text-align: center;
-    margin: 24px 0;
   }
   .print-chart-img {
+    display: block;
+    width: 100%;
     max-width: 100%;
     height: auto;
-    border: 1px solid #ddd;
+    object-fit: contain;
+    margin: 0 auto;
     border-radius: 8px;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -253,10 +269,49 @@ ${opts.inspections
     text-align: start;
   }
   .notes-section-heading { margin-top: 20px; }
-  @page { margin: 15mm; size: A4; }
+  @media print {
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+
+    html, body {
+      width: 100%;
+      max-width: none;
+      height: auto;
+      min-height: 0;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      transform-origin: top left;
+      zoom: 0.95;
+    }
+
+    .print-container {
+      width: 100%;
+      max-width: 100%;
+      transform: scale(0.95);
+      transform-origin: top center;
+    }
+
+    * {
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    table,
+    img,
+    svg {
+      page-break-inside: avoid;
+    }
+  }
 </style>
 </head>
 <body>
+<div class="print-container">
   <header class="header">
     <h1 class="print-doc-title">${escapeHtml(opts.printHeaderTitle)}</h1>
     <h2 class="print-doc-name">${escapeHtml(opts.printHeaderName)}</h2>
@@ -273,6 +328,7 @@ ${opts.inspections
     ${trendPageInner}
     ${notesBlock}
   </section>
+</div>
 </body>
 </html>`
 
@@ -292,7 +348,7 @@ ${opts.inspections
  * When `window.open` is blocked (common on mobile Safari/Chrome), load the same blob document in a
  * zero-size iframe and call print there — no pop-up, uses the native print sheet.
  */
-function printEstablishmentFromBlobUrlInIframe(blobUrl: string): boolean {
+function printEstablishmentFromBlobUrlInIframe(blobUrl: string, printDelayMs: number): boolean {
   const iframe = document.createElement("iframe")
   iframe.setAttribute("aria-hidden", "true")
   iframe.style.cssText =
@@ -349,7 +405,11 @@ function printEstablishmentFromBlobUrlInIframe(blobUrl: string): boolean {
     }
   }
 
-  iframe.addEventListener("load", () => window.setTimeout(runPrint, 250), { once: true })
+  iframe.addEventListener(
+    "load",
+    () => window.setTimeout(runPrint, printDelayMs),
+    { once: true },
+  )
   iframe.src = blobUrl
 
   return true
@@ -364,6 +424,8 @@ export function openEstablishmentPrintWindow(html: string): boolean {
     return false
   }
 
+  const printDelay = html.includes("print-chart-img") ? 800 : 250
+
   const blob = new Blob([html], { type: "text/html;charset=utf-8" })
   const url = URL.createObjectURL(blob)
 
@@ -376,7 +438,7 @@ export function openEstablishmentPrintWindow(html: string): boolean {
         "[establishmentPrint] window.open returned null (pop-up blocked?) — using iframe print",
       )
     }
-    return printEstablishmentFromBlobUrlInIframe(url)
+    return printEstablishmentFromBlobUrlInIframe(url, printDelay)
   }
 
   let urlRevoked = false
@@ -417,7 +479,7 @@ export function openEstablishmentPrintWindow(html: string): boolean {
   w.addEventListener("afterprint", onAfterPrint)
   w.addEventListener("pagehide", onPageHide, { once: true })
 
-  const schedulePrint = () => window.setTimeout(runPrint, 250)
+  const schedulePrint = () => window.setTimeout(runPrint, printDelay)
 
   if (w.document.readyState === "complete") {
     schedulePrint()

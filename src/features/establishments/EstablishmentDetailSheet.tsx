@@ -38,7 +38,10 @@ import { formatInspectionDateDdMmYyyy } from "@/data/establishmentsTable"
 import { useFilterAreas } from "@/hooks/useFilterAreas"
 import { useEstablishmentDetails } from "@/hooks/useEstablishmentDetails"
 import type { EnrichedEstablishmentRow } from "@/lib/dataTableModel"
-import type { EstablishmentInspectionDetail } from "@/lib/supabase/remoteDataset"
+import {
+  inspectorDisplayName,
+  type EstablishmentInspectionDetail,
+} from "@/lib/supabase/remoteDataset"
 import {
   buildEstablishmentPrintHtml,
   openEstablishmentPrintWindow,
@@ -78,7 +81,67 @@ const SCORE_TO_RATING: Record<number, InspectionRating> = {
 
 const INSPECTIONS_PAGE = 5
 
-/** dd/mm/yyyy for print issue line; optional Eastern Arabic numerals (٠–٩). */
+/** Wait for Recharts SVG + layout after switching to Chart tab (print capture). */
+const CHART_DOM_WAIT_MS = 3000
+/** Short settle after layout before html2canvas (straight X labels need less time than angled). */
+const CHART_CAPTURE_AFTER_DOM_MS = 500
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+/**
+ * Poll until the chart mount under `container` has non-trivial size and Recharts has rendered.
+ */
+async function waitForChartReadyForCapture(
+  getContainer: () => HTMLElement | null,
+  timeoutMs: number,
+): Promise<HTMLElement | null> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const container = getContainer()
+    if (container) {
+      const wrap = container.querySelector(".recharts-wrapper")
+      const svg = wrap?.querySelector("svg")
+      const rect = container.getBoundingClientRect()
+      if (
+        wrap &&
+        svg &&
+        rect.width >= 48 &&
+        rect.height >= 48 &&
+        svg.getBoundingClientRect().width >= 32
+      ) {
+        return container
+      }
+    }
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  }
+  return getContainer()
+}
+
+async function captureChartRegionToPng(
+  chartElement: HTMLElement | null,
+  logging: boolean,
+): Promise<string | null> {
+  if (!chartElement) return null
+  const { default: html2canvas } = await import("html2canvas")
+  try {
+    const canvas = await html2canvas(chartElement, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+    })
+    if (canvas.width < 32 || canvas.height < 32) return null
+    const dataUrl = canvas.toDataURL("image/png")
+    if (dataUrl.startsWith("data:image/png") && dataUrl.length > 800) return dataUrl
+  } catch (err) {
+    if (logging) {
+      console.warn("[establishmentPrint] html2canvas failed:", err)
+    }
+  }
+  return null
+}
+
 function formatPrintIssueDate(now: Date, easternArabicNumerals: boolean): string {
   const d = String(now.getDate()).padStart(2, "0")
   const mo = String(now.getMonth() + 1).padStart(2, "0")
@@ -237,6 +300,7 @@ export function EstablishmentDetailSheet({
   const [tab, setTab] = useState("info")
   const [inspectVisible, setInspectVisible] = useState(INSPECTIONS_PAGE)
   const chartCaptureRef = useRef<HTMLDivElement>(null)
+  const [isPrinting, setIsPrinting] = useState(false)
   const [editingInspection, setEditingInspection] = useState<EstablishmentInspectionDetail | null>(
     null,
   )
@@ -271,6 +335,7 @@ export function EstablishmentDetailSheet({
     if (!open) {
       setTab("info")
       setInspectVisible(INSPECTIONS_PAGE)
+      setIsPrinting(false)
     }
   }, [open])
 
@@ -392,6 +457,17 @@ export function EstablishmentDetailSheet({
     [i18n.language, t],
   )
 
+  const [isMdUp, setIsMdUp] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const fn = () => setIsMdUp(mq.matches)
+    mq.addEventListener("change", fn)
+    return () => mq.removeEventListener("change", fn)
+  }, [])
+
   const deleteInspectionDialogDetails = useMemo(() => {
     const ins = deleteInspectionTarget
     if (!ins) return [] as string[]
@@ -409,21 +485,24 @@ export function EstablishmentDetailSheet({
       `${t("establishmentsPage.detail.printColDate")}: ${dateStr}`,
       `${t("establishmentsPage.detail.printColRating")}: ${ratingLine}`,
     ]
-    if (ins.inspector.trim() && ins.inspector !== "—") {
-      lines.push(`${t("establishmentsPage.detail.printColInspector")}: ${ins.inspector}`)
+    const inspLine = inspectorDisplayName(ins, i18n.language.startsWith("ar"))
+    if (inspLine.trim() && inspLine !== "—") {
+      lines.push(`${t("establishmentsPage.detail.printColInspector")}: ${inspLine}`)
     }
     return lines
-  }, [deleteInspectionTarget, isRtl, ratingDisplay, t])
+  }, [deleteInspectionTarget, i18n.language, ratingDisplay, t])
 
-  const chartSeries = useMemo(() => {
+  const { chartSeries, chartDatedTotal } = useMemo(() => {
     const dated = inspections.filter(
       (i) => i.inspectionDate && !Number.isNaN(i.inspectionDate.getTime()),
     )
     const chrono = [...dated].sort(
-      (a, b) => (a.inspectionDate!.getTime() - b.inspectionDate!.getTime()),
+      (a, b) => a.inspectionDate!.getTime() - b.inspectionDate!.getTime(),
     )
+    const cap = isMdUp ? 12 : 10
+    const limited = chrono.slice(-cap)
     const langAr = i18n.language.startsWith("ar")
-    const series = chrono.map((i) => {
+    const series = limited.map((i) => {
       const ratingLabelLocalized = langAr
         ? i.ratingNameAr?.trim() || t(ratingTranslationKey(i.rating))
         : i.ratingNameEn?.trim() || t(ratingTranslationKey(i.rating))
@@ -439,15 +518,26 @@ export function EstablishmentDetailSheet({
         fill: i.ratingColor?.trim() || RATING_HEX[i.rating],
         name: ratingDisplay(i) ?? t(ratingTranslationKey(i.rating)),
         ratingLabelLocalized,
-        inspector: i.inspector?.trim() || "",
+        inspector: inspectorDisplayName(i, langAr),
       }
     })
     if (import.meta.env.DEV) {
       const datedCount = inspections.filter((i) => i.inspectionDate != null).length
-      console.log("[establishmentChart] inspections:", inspections.length, "dated raw:", datedCount, "chart points:", series.length)
+      console.log(
+        "[establishmentChart] inspections:",
+        inspections.length,
+        "dated raw:",
+        datedCount,
+        "dated with valid date:",
+        chrono.length,
+        "chart points:",
+        series.length,
+        "cap:",
+        cap,
+      )
     }
-    return series
-  }, [inspections, ratingDisplay, t, i18n.language])
+    return { chartSeries: series, chartDatedTotal: chrono.length }
+  }, [inspections, ratingDisplay, t, i18n.language, isMdUp])
 
   const chartXTickFormatter = useCallback(
     (value: string) => chartSeries.find((p) => p.id === value)?.dateLabel ?? value,
@@ -460,17 +550,7 @@ export function EstablishmentDetailSheet({
     return [...chartSeries].reverse()
   }, [chartSeries, isRtl])
 
-  const [isMdUp, setIsMdUp] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
-  )
   const [forceNamedYAxisForCapture, setForceNamedYAxisForCapture] = useState(false)
-
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)")
-    const fn = () => setIsMdUp(mq.matches)
-    mq.addEventListener("change", fn)
-    return () => mq.removeEventListener("change", fn)
-  }, [])
 
   const showRatingNamesOnY = isMdUp || forceNamedYAxisForCapture
   const yAxisOrientation = isRtl ? "right" : "left"
@@ -478,50 +558,48 @@ export function EstablishmentDetailSheet({
 
   const handlePrint = async () => {
     if (!establishment) return
+
+    setIsPrinting(true)
+    try {
     const e = establishment
 
     let chartImageDataUrl: string | null = null
-    if (chartSeries.length >= 2) {
+    if (chartDatedTotal >= 2) {
       const prevTab = tab
-      flushSync(() => {
-        setForceNamedYAxisForCapture(true)
-        setTab("chart")
-      })
-      /* Let tab layout + Recharts measure and finish line animation before capture */
-      await new Promise<void>((r) => window.setTimeout(r, 500))
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => resolve())
+      try {
+        flushSync(() => {
+          setForceNamedYAxisForCapture(true)
+          setTab("chart")
         })
-      })
-      await new Promise<void>((r) => window.setTimeout(r, 500))
 
-      const root = chartCaptureRef.current
-      const inner = root?.querySelector(".recharts-wrapper") as HTMLElement | null
-      const target = inner ?? root
-      if (target) {
-        try {
-          const { default: html2canvas } = await import("html2canvas")
-          const canvas = await html2canvas(target, {
-            backgroundColor: "#ffffff",
-            scale: 2,
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-            scrollX: 0,
-            scrollY: 0,
+        await waitForChartReadyForCapture(() => chartCaptureRef.current, CHART_DOM_WAIT_MS)
+        await sleep(CHART_CAPTURE_AFTER_DOM_MS)
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve())
           })
-          chartImageDataUrl = canvas.toDataURL("image/png")
+        })
+
+        const root = chartCaptureRef.current
+        const wrapper = root?.querySelector(".recharts-wrapper") as HTMLElement | null
+        const chartElement = wrapper ?? root
+        try {
+          chartImageDataUrl = await captureChartRegionToPng(chartElement, import.meta.env.DEV)
         } catch (err) {
           if (import.meta.env.DEV) {
             console.warn("[establishmentPrint] Chart capture failed:", err)
           }
         }
+
+        if (!chartImageDataUrl && chartDatedTotal >= 2) {
+          toast(t("establishmentsPage.detail.chartCaptureFallbackToast"), { duration: 4500 })
+        }
+      } finally {
+        flushSync(() => {
+          setForceNamedYAxisForCapture(false)
+          setTab(prevTab)
+        })
       }
-      flushSync(() => {
-        setForceNamedYAxisForCapture(false)
-        setTab(prevTab)
-      })
     }
     const fields: EstablishmentPrintField[] = []
     const push = (label: string, value: unknown) => {
@@ -566,7 +644,7 @@ export function EstablishmentDetailSheet({
         ? formatInspectionDateDdMmYyyy(ins.inspectionDate, t("common.dateUnknown"))
         : t("common.dateUnknown"),
       rating: ratingDisplay(ins) ?? t(ratingTranslationKey(ins.rating)),
-      inspector: ins.inspector,
+      inspector: inspectorDisplayName(ins, i18n.language.startsWith("ar")),
       ref: ins.refNumber?.trim() || "—",
       task: ins.taskType?.trim() || "—",
       note: ins.note?.trim(),
@@ -617,6 +695,9 @@ export function EstablishmentDetailSheet({
 
     if (!openEstablishmentPrintWindow(html)) {
       toast.error(t("establishmentsPage.detail.printFailed"))
+    }
+    } finally {
+      setIsPrinting(false)
     }
   }
 
@@ -767,12 +848,27 @@ export function EstablishmentDetailSheet({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="gap-2 border-[#8B1538]/35 text-[#8B1538] hover:bg-[#8B1538]/10"
-                  disabled={loading}
+                  className={cn(
+                    "gap-2",
+                    isPrinting
+                      ? "cursor-wait border-muted-foreground/30 bg-muted/80 text-muted-foreground hover:bg-muted/80"
+                      : "border-[#8B1538]/35 text-[#8B1538] hover:bg-[#8B1538]/10",
+                  )}
+                  disabled={loading || isPrinting}
+                  aria-busy={isPrinting}
                   onClick={() => void handlePrint()}
                 >
-                  <Printer className="size-4" aria-hidden />
-                  {t("establishmentsPage.detail.print")}
+                  {isPrinting ? (
+                    <>
+                      <Loader2Icon className="size-4 shrink-0 animate-spin" aria-hidden />
+                      {t("establishmentsPage.detail.printPreparing")}
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="size-4 shrink-0" aria-hidden />
+                      {t("establishmentsPage.detail.print")}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -853,7 +949,8 @@ export function EstablishmentDetailSheet({
                               />
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {t("establishmentsPage.detail.inspector")}: {ins.inspector}
+                              {t("establishmentsPage.detail.inspector")}:{" "}
+                              {inspectorDisplayName(ins, i18n.language.startsWith("ar"))}
                             </p>
                             {ins.refNumber ? (
                               <p className="text-xs text-muted-foreground">
@@ -927,7 +1024,7 @@ export function EstablishmentDetailSheet({
               </TabsContent>
 
               <TabsContent value="chart" className="mt-4">
-                {chartSeries.length < 2 ? (
+                {chartDatedTotal < 2 ? (
                   <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
                     {t("establishmentsPage.detail.chartNotEnough")}
                   </p>
@@ -935,16 +1032,28 @@ export function EstablishmentDetailSheet({
                   <div
                     ref={chartCaptureRef}
                     data-print-chart-capture=""
-                    className="h-[320px] w-full min-w-0 rounded-lg border border-border bg-card/40 p-2 dark:bg-card/25"
+                    className="flex w-full min-w-0 flex-col gap-2 rounded-lg border border-border bg-card/40 p-2 dark:bg-card/25"
                   >
-                    {/* Time axis must stay LTR in all locales; Y-axis side stays RTL-aware via orientation */}
-                    <div dir="ltr" className="h-full w-full min-w-0">
+                    <p
+                      className="px-1 text-center text-xs text-muted-foreground"
+                      dir={isRtl ? "rtl" : "ltr"}
+                    >
+                      {chartDatedTotal > chartSeries.length
+                        ? t("establishmentsPage.detail.chartShowingLastTruncated", {
+                            shown: chartSeries.length,
+                            total: chartDatedTotal,
+                          })
+                        : t("establishmentsPage.detail.chartShowingLast", {
+                            count: chartSeries.length,
+                          })}
+                    </p>
+                    <div dir="ltr" className="h-[300px] w-full min-w-0 md:h-[360px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
                         data={chartDataForDisplay}
                         margin={{
                           top: 12,
-                          bottom: 12,
+                          bottom: 8,
                           left: yAxisOrientation === "left" ? (showRatingNamesOnY ? 4 : 10) : 10,
                           right: yAxisOrientation === "right" ? (showRatingNamesOnY ? 4 : 10) : 12,
                         }}
@@ -954,9 +1063,12 @@ export function EstablishmentDetailSheet({
                           dataKey="id"
                           type="category"
                           tickFormatter={chartXTickFormatter}
-                          interval="preserveStartEnd"
+                          interval={0}
+                          angle={0}
+                          textAnchor="middle"
+                          height={60}
                           padding={{ left: 8, right: 8 }}
-                          tick={{ fontSize: 11 }}
+                          tick={{ fontSize: 10 }}
                           className="text-muted-foreground"
                         />
                         <YAxis

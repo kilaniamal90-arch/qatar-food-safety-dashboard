@@ -132,10 +132,106 @@ const RATING_NAME_AR_KEYS = [
   "last_inspection_rating_name_ar",
 ] as const
 
+const OPERATIONAL_STATUS_REL_KEYS = [
+  "operational_statuses",
+  "operational_status",
+] as const
+
+const OPERATIONAL_STATUS_NAME_EN_KEYS = [
+  "operational_status_name_en",
+  "status_name_en",
+] as const
+
+const OPERATIONAL_STATUS_NAME_AR_KEYS = [
+  "operational_status_name_ar",
+  "status_name_ar",
+] as const
+
 function takeNonEmptyString(v: unknown): string | null {
   if (typeof v !== "string") return null
   const s = v.trim()
   return s !== "" ? s : null
+}
+
+function operationalStatusNamesPresentInRow(row: Record<string, unknown>): boolean {
+  if (takeNonEmptyString(pickFirst(row, [...OPERATIONAL_STATUS_NAME_EN_KEYS])))
+    return true
+  if (takeNonEmptyString(pickFirst(row, [...OPERATIONAL_STATUS_NAME_AR_KEYS])))
+    return true
+  for (const k of OPERATIONAL_STATUS_REL_KEYS) {
+    const o = relationObject(row[k])
+    if (!o) continue
+    if (
+      takeNonEmptyString(pickFirst(o, ["name_en", "nameEn"])) ||
+      takeNonEmptyString(pickFirst(o, ["name_ar", "nameAr"]))
+    )
+      return true
+  }
+  return false
+}
+
+function resolveOperationalStatusFromApiRow(
+  row: Record<string, unknown>,
+): OperationalStatus {
+  let nameEn = takeNonEmptyString(
+    pickFirst(row, [...OPERATIONAL_STATUS_NAME_EN_KEYS]),
+  )
+  let nameAr = takeNonEmptyString(
+    pickFirst(row, [...OPERATIONAL_STATUS_NAME_AR_KEYS]),
+  )
+
+  for (const k of OPERATIONAL_STATUS_REL_KEYS) {
+    const o = relationObject(row[k])
+    if (!o) continue
+    const en = takeNonEmptyString(pickFirst(o, ["name_en", "nameEn"]))
+    const ar = takeNonEmptyString(pickFirst(o, ["name_ar", "nameAr"]))
+    if (en && !nameEn) nameEn = en
+    if (ar && !nameAr) nameAr = ar
+  }
+
+  const coerced =
+    coerceOperationalStatus(nameEn) ?? coerceOperationalStatus(nameAr)
+  return coerced ?? "Open"
+}
+
+async function hydrateOperationalStatusOnViewRows(
+  supabase: SupabaseClient,
+  rows: Record<string, unknown>[],
+): Promise<void> {
+  const missing = new Set<string>()
+  for (const row of rows) {
+    if (operationalStatusNamesPresentInRow(row)) continue
+    const idRaw = pickFirst(row, ["operational_status_id", "operationalStatusId"])
+    if (idRaw != null && String(idRaw).trim() !== "") {
+      missing.add(String(idRaw))
+    }
+  }
+  if (missing.size === 0) return
+
+  const { data, error } = await supabase
+    .from("operational_statuses")
+    .select("id, name_ar, name_en")
+    .in("id", [...missing])
+
+  if (error) throw new Error(error.message)
+
+  const byId = new Map<string, Record<string, unknown>>()
+  for (const r of data ?? []) {
+    const rec = r as Record<string, unknown>
+    const id = String(rec.id ?? "")
+    if (!id) continue
+    byId.set(id, rec)
+  }
+
+  for (const row of rows) {
+    if (operationalStatusNamesPresentInRow(row)) continue
+    const idRaw = pickFirst(row, ["operational_status_id", "operationalStatusId"])
+    const id =
+      idRaw != null && String(idRaw).trim() !== "" ? String(idRaw) : ""
+    if (!id) continue
+    const st = byId.get(id)
+    if (st) row.operational_statuses = st
+  }
 }
 
 export function mapEstablishmentApiRow(
@@ -167,8 +263,7 @@ export function mapEstablishmentApiRow(
       (areasObj ? pickFirst(areasObj, ["name_en", "nameEn"]) : undefined),
   )
 
-  /** Placeholder — dashboard uses `establishment_status_history`; legacy/mock still set `operationalStatus` on the model. */
-  const operationalStatus: OperationalStatus = "Open"
+  const operationalStatus = resolveOperationalStatusFromApiRow(row)
 
   const cr =
     String(pickFirst(row, ["cr_number", "crNumber"]) ?? "").trim() || id.slice(0, 12)
@@ -555,12 +650,30 @@ export type EstablishmentInspectionDetail = {
   ratingColor: string | null
   /** Supabase `ratings.id` when available. */
   ratingId: string
-  inspector: string
+  inspectorNameAr: string
+  inspectorNameEn: string
   /** Supabase `inspectors.id` when available. */
   inspectorId: string
   refNumber: string | null
   note?: string
   taskType?: string
+}
+
+/** Inspector column / tooltip: Arabic vs English from joined `inspectors` names. */
+export function inspectorDisplayName(
+  ins: Pick<EstablishmentInspectionDetail, "inspectorNameAr" | "inspectorNameEn">,
+  preferArabic: boolean,
+): string {
+  const ar = ins.inspectorNameAr.trim()
+  const en = ins.inspectorNameEn.trim()
+  if (preferArabic) {
+    if (ar && ar !== "—") return ar
+    if (en && en !== "—") return en
+  } else {
+    if (en && en !== "—") return en
+    if (ar && ar !== "—") return ar
+  }
+  return "—"
 }
 
 export function mapInspectionDetailApiRow(
@@ -595,14 +708,21 @@ export function mapInspectionDetailApiRow(
   if (!rating) return null
 
   const inspectorsObj = relationObject(row.inspectors)
-  const inspector =
-    String(
-      pickFirst(row, ["inspector_name", "inspector"]) ??
-        inspectorsObj?.name ??
-        inspectorsObj?.name_ar ??
-        inspectorsObj?.name_en ??
-        "—",
-    ).trim() || "—"
+  const legacyInspector = String(
+    pickFirst(row, ["inspector_name", "inspector"]) ??
+      inspectorsObj?.name ??
+      "",
+  ).trim()
+  const nameArDb = String(
+    pickFirst(inspectorsObj ?? {}, ["name_ar", "nameAr"]) ?? "",
+  ).trim()
+  const nameEnDb = String(
+    pickFirst(inspectorsObj ?? {}, ["name_en", "nameEn"]) ?? "",
+  ).trim()
+  const inspectorNameAr =
+    (nameArDb || legacyInspector || nameEnDb || "—").trim() || "—"
+  const inspectorNameEn =
+    (nameEnDb || legacyInspector || nameArDb || "—").trim() || "—"
 
   const ratingIdRaw =
     pickFirst(row, ["rating_id", "ratingId"]) ??
@@ -644,7 +764,8 @@ export function mapInspectionDetailApiRow(
     ratingNameEn: nameEn,
     ratingColor,
     ratingId,
-    inspector,
+    inspectorNameAr,
+    inspectorNameEn,
     inspectorId,
     refNumber,
     ...(note ? { note } : {}),
@@ -769,7 +890,7 @@ export function mapSortToViewColumns(
   }
 }
 
-/** Resolve filter label to FK: `establishments_with_latest_inspection` exposes `operational_status_id`, not flattened name columns. */
+/** Resolve filter label to FK: `establishments_with_latest_inspection` uses `operational_status_id`; names may be hydrated via `operational_statuses`. */
 async function fetchOperationalStatusIdByNameEn(
   supabase: SupabaseClient,
   nameEn: string,
@@ -815,7 +936,9 @@ export async function fetchEstablishmentsViewFiltered(
   const { data, error } = await q
   if (error) throw new Error(error.message)
 
-  return (data ?? []) as Record<string, unknown>[]
+  const rows = (data ?? []) as Record<string, unknown>[]
+  await hydrateOperationalStatusOnViewRows(supabase, rows)
+  return rows
 }
 
 export function mapEstablishmentsViewRow(

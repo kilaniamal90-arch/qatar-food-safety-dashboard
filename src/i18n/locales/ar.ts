@@ -954,6 +954,7 @@ export const ar = {
     },
     detail: {
       print: "طباعة",
+      printPreparing: "جارٍ التحضير…",
       printHeaderTitle: "سلامة الغذاء - التفتيش المحلي",
       printActivityUnspecified: "نوع النشاط غير محدد",
       printIssueDate: "تاريخ الإصدار",
@@ -968,10 +969,15 @@ export const ar = {
       printColInspector: "المفتش",
       printColRef: "المرجع",
       printColTask: "نوع المهمة",
+      chartShowingLast: "عرض آخر {{count}} تفتيشات (الأحدث أولاً).",
+      chartShowingLastTruncated:
+        "عرض آخر {{shown}} من أصل {{total}} تفتيشاً بتاريخ (الأحدث أولاً).",
+      chartCaptureFallbackToast:
+        "تعذر التقاط صورة الرسم البياني؛ القائمة النصية أدناه تعرض نفس التفتيشات.",
       chartNotEnoughPrint: "لا توجد بيانات كافية للرسم البياني",
-      tabInfo: "معلومات / Info",
-      tabInspections: "التفتيشات / Inspections",
-      tabChart: "الرسم البياني / Chart",
+      tabInfo: "معلومات",
+      tabInspections: "التفتيشات",
+      tabChart: "الرسم البياني",
       tabNotes: "الملاحظات",
       notesSaved: "تم حفظ الملاحظات",
       notesSaveFailed: "فشل حفظ الملاحظات",

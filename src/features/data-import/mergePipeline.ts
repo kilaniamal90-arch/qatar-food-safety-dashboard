@@ -64,6 +64,7 @@ const OPS_ALIASES: Record<string, OperationalStatus> = {
   "temporary close": "Temporary Closed",
   "open soon": "Open Soon",
   مغلقة: "Closed",
+  مفتوح: "Open",
   مفتوحة: "Open",
   "قريبا": "Open Soon",
   "قريباً": "Open Soon",
