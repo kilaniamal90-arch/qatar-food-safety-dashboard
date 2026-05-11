@@ -539,7 +539,6 @@ export const ar = {
     passwordUpdated: "تم تحديث كلمة المرور بنجاح.",
     updatingPassword: "جاري التحديث…",
     appVersionLabel: "الإصدار",
-    appVersion: "1.0.0",
     logoutButton: "خروج",
     logoutConfirmTitle: "تأكيد تسجيل الخروج",
     logoutConfirmMessage: "هل أنت متأكد من تسجيل الخروج؟",
@@ -1055,7 +1054,7 @@ export const ar = {
     },
   },
   sidebar: {
-    version: "الإصدار 1.0.0",
+    version: "الإصدار {{version}}",
     copyright: "© 2026 جميع الحقوق محفوظة",
   },
 }

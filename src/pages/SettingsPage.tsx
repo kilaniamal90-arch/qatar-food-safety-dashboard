@@ -29,6 +29,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { setLocale } from "@/i18n/config"
+import { APP_VERSION } from "@/lib/version"
 import { cn } from "@/lib/utils"
 
 function SettingsSectionCard({
@@ -191,9 +192,7 @@ export function SettingsPage() {
       <SettingsSectionCard icon={InfoIcon} title={t("settings.appInfoTitle")}>
         <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
           <span className="text-muted-foreground">{t("settings.appVersionLabel")}</span>
-          <span className="font-mono font-semibold text-foreground">
-            {t("settings.appVersion")}
-          </span>
+          <span className="font-mono font-semibold text-foreground">{APP_VERSION}</span>
         </div>
       </SettingsSectionCard>
 

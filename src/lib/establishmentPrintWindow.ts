@@ -345,14 +345,19 @@ ${opts.inspections
 }
 
 /**
- * When `window.open` is blocked (common on mobile Safari/Chrome), load the same blob document in a
- * zero-size iframe and call print there — no pop-up, uses the native print sheet.
+ * When `window.open` is blocked or unreliable (common on Android Chrome), load the blob document in an
+ * iframe and call print after a delay so layout/fonts settle.
  */
-function printEstablishmentFromBlobUrlInIframe(blobUrl: string, printDelayMs: number): boolean {
+function printEstablishmentFromBlobUrlInIframe(
+  blobUrl: string,
+  printDelayMs: number,
+  androidLayout: boolean,
+): boolean {
   const iframe = document.createElement("iframe")
   iframe.setAttribute("aria-hidden", "true")
-  iframe.style.cssText =
-    "position:fixed;inset:0;width:0;height:0;border:0;visibility:hidden;pointer-events:none"
+  iframe.style.cssText = androidLayout
+    ? "position:fixed;inset:0;width:100%;height:100%;border:0;opacity:0;pointer-events:none;z-index:2147483647"
+    : "position:fixed;inset:0;width:0;height:0;border:0;visibility:hidden;pointer-events:none"
 
   let cleaned = false
   const cleanup = () => {
@@ -416,7 +421,15 @@ function printEstablishmentFromBlobUrlInIframe(blobUrl: string, printDelayMs: nu
 }
 
 /**
- * Load HTML via Blob URL (new tab). If pop-ups are blocked, fall back to a hidden iframe + print.
+ * Last resort: open the print document in this tab so the user can use the browser print action.
+ * Does not revoke `blobUrl` (document is now showing it).
+ */
+function openBlobPrintInSameTab(blobUrl: string): void {
+  window.location.assign(blobUrl)
+}
+
+/**
+ * Load HTML via Blob URL. Android: iframe + long delay (avoids popup/tab print bugs). Others: new tab when allowed.
  */
 export function openEstablishmentPrintWindow(html: string): boolean {
   if (!html.trim()) {
@@ -424,41 +437,95 @@ export function openEstablishmentPrintWindow(html: string): boolean {
     return false
   }
 
-  const printDelay = html.includes("print-chart-img") ? 800 : 250
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : ""
+  const isAndroid = /Android/i.test(ua)
+  const isMobile = /Android|iPhone|iPad/i.test(ua)
+  const hasHeavyPrint = html.includes("print-chart-img")
+
+  const delayAfterLoadIframe = isAndroid
+    ? hasHeavyPrint
+      ? 2_600
+      : 2_000
+    : hasHeavyPrint
+      ? 900
+      : 450
+
+  const delayAfterLoadPopup = isMobile ? (hasHeavyPrint ? 2_000 : 1_200) : hasHeavyPrint ? 1_000 : 550
+
+  const openDelayMs = isAndroid ? 450 : 300
 
   const blob = new Blob([html], { type: "text/html;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
+  const popupUrl = URL.createObjectURL(blob)
 
-  /* Avoid noopener in features: opener may need a normal reference for post-load print(). */
-  const w = window.open(url, "_blank", "width=960,height=840")
+  const runIframePrint = (blobUrl: string, androidLayout: boolean): boolean => {
+    const ok = printEstablishmentFromBlobUrlInIframe(blobUrl, delayAfterLoadIframe, androidLayout)
+    if (!ok) {
+      if (import.meta.env.DEV) {
+        console.warn("[establishmentPrint] iframe print failed — opening document in same tab")
+      }
+      openBlobPrintInSameTab(blobUrl)
+    }
+    return true
+  }
 
-  if (!w) {
+  if (isAndroid) {
+    window.setTimeout(() => {
+      void runIframePrint(popupUrl, true)
+    }, openDelayMs)
+    return true
+  }
+
+  const w = window.open(popupUrl, "_blank", "width=960,height=840")
+
+  if (!w || w.closed) {
     if (import.meta.env.DEV) {
       console.warn(
-        "[establishmentPrint] window.open returned null (pop-up blocked?) — using iframe print",
+        "[establishmentPrint] window.open blocked or closed — using iframe / same-tab fallback",
       )
     }
-    return printEstablishmentFromBlobUrlInIframe(url, printDelay)
+    try {
+      URL.revokeObjectURL(popupUrl)
+    } catch {
+      /* ignore */
+    }
+    const fallbackUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }))
+    window.setTimeout(() => {
+      void runIframePrint(fallbackUrl, false)
+    }, openDelayMs)
+    return true
   }
 
   let urlRevoked = false
-  const revokeUrl = () => {
+  const revokePopupUrl = () => {
     if (urlRevoked) return
     urlRevoked = true
-    URL.revokeObjectURL(url)
+    try {
+      URL.revokeObjectURL(popupUrl)
+    } catch {
+      /* ignore */
+    }
   }
 
   const runPrint = () => {
     try {
+      if (w.closed) {
+        revokePopupUrl()
+        const fallbackUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }))
+        void runIframePrint(fallbackUrl, false)
+        return
+      }
       w.focus()
       w.print()
     } catch (e) {
       if (import.meta.env.DEV) console.warn("[establishmentPrint] print() error:", e)
+      revokePopupUrl()
+      const fallbackUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }))
+      void runIframePrint(fallbackUrl, false)
     }
   }
 
   const cleanup = () => {
-    revokeUrl()
+    revokePopupUrl()
     try {
       w.close()
     } catch {
@@ -470,22 +537,29 @@ export function openEstablishmentPrintWindow(html: string): boolean {
 
   const onAfterPrint = () => cleanup()
 
-  /** If user closes tab without printing, still release the blob URL. */
   const onPageHide = () => {
-    revokeUrl()
+    revokePopupUrl()
     w.removeEventListener("pagehide", onPageHide)
   }
 
   w.addEventListener("afterprint", onAfterPrint)
   w.addEventListener("pagehide", onPageHide, { once: true })
 
-  const schedulePrint = () => window.setTimeout(runPrint, printDelay)
+  const schedulePrint = () => window.setTimeout(runPrint, delayAfterLoadPopup)
 
-  if (w.document.readyState === "complete") {
-    schedulePrint()
-  } else {
-    w.addEventListener("load", schedulePrint, { once: true })
-  }
+  window.setTimeout(() => {
+    if (w.closed) {
+      revokePopupUrl()
+      const fallbackUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }))
+      void runIframePrint(fallbackUrl, false)
+      return
+    }
+    if (w.document.readyState === "complete") {
+      schedulePrint()
+    } else {
+      w.addEventListener("load", schedulePrint, { once: true })
+    }
+  }, openDelayMs)
 
   if (import.meta.env.DEV) {
     console.log("[establishmentPrint] opened blob document, waiting for load/print")

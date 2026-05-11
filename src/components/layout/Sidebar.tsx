@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { NavLink } from "react-router-dom"
 
+import { APP_VERSION } from "@/lib/version"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/auth/AuthContext"
 
@@ -103,7 +104,9 @@ export function SidebarFooter() {
   const { t } = useTranslation()
   return (
     <div className="mt-4 rounded-lg border border-border bg-secondary/40 px-3 py-3 text-center">
-      <p className="text-xs font-medium text-muted-foreground">{t("sidebar.version")}</p>
+      <p className="text-xs font-medium text-muted-foreground">
+        {t("sidebar.version", { version: APP_VERSION })}
+      </p>
       <p className="mt-0.5 text-xs text-muted-foreground/70">{t("sidebar.copyright")}</p>
     </div>
   )

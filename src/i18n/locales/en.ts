@@ -537,7 +537,6 @@ export default {
     passwordUpdated: "Password updated successfully.",
     updatingPassword: "Updating…",
     appVersionLabel: "Version",
-    appVersion: "1.0.0",
     logoutButton: "Sign out",
     logoutConfirmTitle: "Confirm logout",
     logoutConfirmMessage: "Are you sure you want to logout?",
@@ -1064,7 +1063,7 @@ export default {
     },
   },
   sidebar: {
-    version: "Version 1.0.0",
+    version: "Version {{version}}",
     copyright: "© 2026 All rights reserved",
   },
 } as const
