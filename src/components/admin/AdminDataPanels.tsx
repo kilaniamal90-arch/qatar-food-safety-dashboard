@@ -1,5 +1,10 @@
 import {
+  AlertCircleIcon,
+  AlertTriangleIcon,
   CalendarIcon,
+  CheckCircle2Icon,
+  InfoIcon,
+  KeyRoundIcon,
   Loader2Icon,
   MapPinIcon,
   MoreHorizontalIcon,
@@ -7,6 +12,7 @@ import {
   PaletteIcon,
   PlusIcon,
   RefreshCwIcon,
+  RotateCcwIcon,
   ShieldIcon,
   Trash2Icon,
   UserCheckIcon,
@@ -45,6 +51,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useAdminUsers } from "@/hooks/useAdminUsers"
 import { useAreas } from "@/hooks/useAreas"
 import { useInspectors } from "@/hooks/useInspectors"
@@ -53,8 +65,10 @@ import { useStatuses } from "@/hooks/useStatuses"
 import { useManagedYears, notifyActiveYearsChanged } from "@/hooks/useYears"
 import {
   activateAdminUser,
+  ADMIN_DEFAULT_TEMP_PASSWORD,
   createAdminUser,
   deleteAdminUser,
+  resetAdminUserPassword,
   updateAdminUser,
 } from "@/lib/supabase/adminUsersCrud"
 import { supabase } from "@/lib/supabase"
@@ -117,8 +131,14 @@ export function AdminUsersPanel() {
   const [busyDelete, setBusyDelete] = useState(false)
   const [activateOpen, setActivateOpen] = useState(false)
   const [activateTarget, setActivateTarget] = useState<ManagedUser | null>(null)
-  const [activatePassword, setActivatePassword] = useState("")
   const [activateBusy, setActivateBusy] = useState(false)
+  const [resetPwdTarget, setResetPwdTarget] = useState<ManagedUser | null>(null)
+  const [resetPwdBusy, setResetPwdBusy] = useState(false)
+  const [userCreatedSuccess, setUserCreatedSuccess] = useState<{
+    name: string
+    email: string
+    tempPassword: string
+  } | null>(null)
 
   function resetForm(user?: ManagedUser | null) {
     setEditing(user ?? null)
@@ -143,26 +163,26 @@ export function AdminUsersPanel() {
   }
 
   async function submit() {
-    if (!name.trim()) {
-      setFormError(t("admin.validation.requiredName"))
+    if (name.trim().length < 2) {
+      setFormError(t("admin.validation.nameMinLength"))
       return
     }
     if (!isValidEmail(email.trim())) {
       setFormError(t("admin.validation.email"))
       return
     }
-    if (!editing && password.trim().length < 6) {
-      setFormError(t("admin.validation.password"))
+    if (role !== "admin" && areaIds.length === 0) {
+      setFormError(t("admin.validation.areas"))
       return
     }
-    if (areaIds.length === 0) {
-      setFormError(t("admin.validation.areas"))
+    if (editing && password.trim().length > 0 && password.trim().length < 6) {
+      setFormError(t("admin.validation.password"))
       return
     }
     setSaving(true)
     setFormError(null)
     if (editing) {
-      const { error } = await updateAdminUser({
+      const updatePayload = {
         profileId: editing.id,
         authUserId: editing.authUserId,
         name: name.trim(),
@@ -170,35 +190,55 @@ export function AdminUsersPanel() {
         password: password.trim() || undefined,
         role,
         areaIds,
-        canImport,
-        isActive,
+        canImport: Boolean(canImport),
+        isActive: Boolean(isActive),
+      }
+      console.log("[AdminUsersPanel] submit edit → calling updateAdminUser with:", {
+        profileId: updatePayload.profileId,
+        authUserId: updatePayload.authUserId,
+        name: updatePayload.name,
+        email: updatePayload.email,
+        role: updatePayload.role,
+        areaIds: updatePayload.areaIds,
+        canImport: updatePayload.canImport,
+        isActive: updatePayload.isActive,
+        passwordProvided: Boolean(updatePayload.password),
       })
+      const { error } = await updateAdminUser(updatePayload)
       setSaving(false)
       if (error) {
         console.error("[AdminUsersPanel] updateAdminUser failed:", error)
         setFormError(error)
+        toast.error(error)
         return
       }
-    } else {
-      const { error } = await createAdminUser({
-        email: email.trim(),
-        password: password.trim(),
-        name: name.trim(),
-        role,
-        areaIds,
-        canImport,
-        isActive,
-      })
-      setSaving(false)
-      if (error) {
-        console.error("[AdminUsersPanel] createAdminUser failed:", error)
-        setFormError(error)
-        return
-      }
+      await refetchUsers()
+      setDialogOpen(false)
+      toast.success(t("admin.common.success"))
+      return
+    }
+
+    const { error } = await createAdminUser({
+      email: email.trim(),
+      name: name.trim(),
+      role,
+      areaIds,
+      canImport: Boolean(canImport),
+      isActive: Boolean(isActive),
+    })
+    setSaving(false)
+    if (error) {
+      console.error("[AdminUsersPanel] createAdminUser failed:", error)
+      setFormError(error)
+      return
     }
     await refetchUsers()
     setDialogOpen(false)
-    toast.success(t("admin.common.success"))
+    setUserCreatedSuccess({
+      name: name.trim(),
+      email: email.trim(),
+      tempPassword: ADMIN_DEFAULT_TEMP_PASSWORD,
+    })
   }
 
   async function confirmDelete() {
@@ -219,12 +259,9 @@ export function AdminUsersPanel() {
 
   async function submitActivate() {
     if (!activateTarget) return
-    if (activatePassword.trim().length < 6) {
-      toast.error(t("admin.validation.password"))
-      return
-    }
     setActivateBusy(true)
-    const { error } = await activateAdminUser(activateTarget.id, activatePassword.trim())
+    const { error } = await activateAdminUser(activateTarget.id)
+    const savedTarget = activateTarget
     setActivateBusy(false)
     if (error) {
       console.error("[AdminUsersPanel] activateAdminUser failed:", error)
@@ -233,13 +270,32 @@ export function AdminUsersPanel() {
     }
     setActivateOpen(false)
     setActivateTarget(null)
-    setActivatePassword("")
     await refetchUsers()
-    toast.success(t("admin.common.success"))
+    setUserCreatedSuccess({
+      name: savedTarget.name.trim(),
+      email: savedTarget.email.trim(),
+      tempPassword: ADMIN_DEFAULT_TEMP_PASSWORD,
+    })
+  }
+
+  async function confirmResetPassword() {
+    if (!resetPwdTarget?.authUserId) return
+    setResetPwdBusy(true)
+    const { error } = await resetAdminUserPassword(resetPwdTarget.id, resetPwdTarget.authUserId)
+    setResetPwdBusy(false)
+    if (error) {
+      console.error("[AdminUsersPanel] resetAdminUserPassword failed:", error)
+      toast.error(error || t("admin.users.resetPasswordError"), { duration: 6000 })
+      return
+    }
+    setResetPwdTarget(null)
+    await refetchUsers()
+    toast.success(t("admin.users.resetPasswordSuccess"))
   }
 
   return (
-    <Card className="border-border p-5 shadow-md">
+    <TooltipProvider delayDuration={300}>
+      <Card className="border-border p-5 shadow-md">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-bold text-foreground">
@@ -330,8 +386,8 @@ export function AdminUsersPanel() {
                           email: u.email,
                           role: u.role,
                           areaIds: u.areaIds,
-                          canImport: u.canImport,
-                          isActive: c,
+                          canImport: Boolean(u.canImport),
+                          isActive: Boolean(c),
                         })
                         if (error) {
                           console.error("[AdminUsersPanel] updateAdminUser (toggle) failed:", error)
@@ -343,6 +399,23 @@ export function AdminUsersPanel() {
                       }}
                       aria-label={t("admin.users.toggleStatus")}
                     />
+                    {u.authUserId ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label={t("admin.users.resetPassword")}
+                            disabled={usersLoading}
+                            onClick={() => setResetPwdTarget(u)}
+                          >
+                            <RotateCcwIcon className="size-4" aria-hidden />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">{t("admin.users.resetPassword")}</TooltipContent>
+                      </Tooltip>
+                    ) : null}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="icon" aria-label={t("admin.common.actions")}>
@@ -357,7 +430,6 @@ export function AdminUsersPanel() {
                           <DropdownMenuItem
                             onClick={() => {
                               setActivateTarget(u)
-                              setActivatePassword("")
                               setActivateOpen(true)
                             }}
                           >
@@ -392,6 +464,23 @@ export function AdminUsersPanel() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4" dir={rtl ? "rtl" : "ltr"}>
+            {!editing ? (
+              <div
+                className={cn(
+                  "flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100",
+                  rtl && "flex-row-reverse text-end",
+                )}
+                role="status"
+              >
+                <InfoIcon className="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+                <div className="min-w-0 space-y-1">
+                  <p className="font-medium">{t("admin.users.temporaryPasswordNote")}</p>
+                  <p className="text-blue-900/85 dark:text-blue-200/90">
+                    {t("admin.users.temporaryPasswordNoteDetail")}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label
                 htmlFor="adm-u-name"
@@ -421,26 +510,26 @@ export function AdminUsersPanel() {
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label
-                htmlFor="adm-u-pass"
-                className={cn(rtl && "block text-end")}
-              >
-                {t("admin.users.password")}{" "}
-                {editing && (
+            {editing ? (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="adm-u-pass"
+                  className={cn(rtl && "block text-end")}
+                >
+                  {t("admin.users.password")}{" "}
                   <span className="text-xs text-muted-foreground">
                     ({t("admin.users.passwordOptional")})
                   </span>
-                )}
-              </Label>
-              <Input
-                id="adm-u-pass"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
+                </Label>
+                <Input
+                  id="adm-u-pass"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label
                 htmlFor="adm-u-role"
@@ -559,6 +648,86 @@ export function AdminUsersPanel() {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={userCreatedSuccess !== null}
+        onOpenChange={(open) => {
+          if (!open) setUserCreatedSuccess(null)
+        }}
+      >
+        <DialogContent dir={rtl ? "rtl" : "ltr"} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle
+              className={cn("flex items-center gap-2 text-start", rtl && "flex-row-reverse text-end")}
+            >
+              <CheckCircle2Icon className="size-5 shrink-0 text-green-600 dark:text-green-500" aria-hidden />
+              <span>{t("admin.users.userCreatedSuccess")}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-lg bg-muted/60 p-4">
+              <div
+                className={cn(
+                  "flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm",
+                  rtl && "flex-row-reverse justify-end text-end",
+                )}
+              >
+                <span className="text-muted-foreground">{t("admin.users.name")}:</span>
+                <span className="font-medium text-foreground">{userCreatedSuccess?.name}</span>
+              </div>
+              <div
+                className={cn(
+                  "flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm",
+                  rtl && "flex-row-reverse justify-end text-end",
+                )}
+              >
+                <span className="text-muted-foreground">{t("admin.users.email")}:</span>
+                <span className="font-medium break-all text-foreground" dir="ltr">
+                  {userCreatedSuccess?.email}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/25">
+              <div
+                className={cn(
+                  "mb-2 flex items-center gap-2 font-medium text-amber-950 dark:text-amber-100",
+                  rtl && "flex-row-reverse text-end",
+                )}
+              >
+                <KeyRoundIcon className="size-4 shrink-0 text-amber-700 dark:text-amber-400" aria-hidden />
+                <span>{t("admin.users.temporaryPassword")}</span>
+              </div>
+              <div
+                className="py-2 text-center font-mono text-2xl font-bold tracking-wider text-amber-950 dark:text-amber-100"
+                dir="ltr"
+              >
+                {userCreatedSuccess?.tempPassword}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/30">
+              <div className={cn("flex gap-2 text-sm text-blue-950 dark:text-blue-100", rtl && "flex-row-reverse")}>
+                <AlertCircleIcon
+                  className="size-5 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5"
+                  aria-hidden
+                />
+                <div className={cn("min-w-0 space-y-1", rtl && "text-end")}>
+                  <p className="font-medium">{t("admin.users.pleaseInformUser")}</p>
+                  <p className="text-blue-900/90 dark:text-blue-200/95">{t("admin.users.userWillChangePassword")}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" className="w-full" onClick={() => setUserCreatedSuccess(null)}>
+              {t("admin.common.ok")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ConfirmDeleteDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -579,7 +748,6 @@ export function AdminUsersPanel() {
             setActivateOpen(o)
             if (!o) {
               setActivateTarget(null)
-              setActivatePassword("")
             }
           }
         }}
@@ -595,17 +763,20 @@ export function AdminUsersPanel() {
               email: activateTarget?.email ?? "",
             })}
           </p>
-          <div className="space-y-2">
-            <Label htmlFor="adm-activate-pass" className={cn(rtl && "block text-end")}>
-              {t("admin.users.password")}
-            </Label>
-            <Input
-              id="adm-activate-pass"
-              type="password"
-              value={activatePassword}
-              onChange={(e) => setActivatePassword(e.target.value)}
-              autoComplete="new-password"
-            />
+          <div
+            className={cn(
+              "flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100",
+              rtl && "flex-row-reverse text-end",
+            )}
+            role="status"
+          >
+            <InfoIcon className="size-5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">{t("admin.users.temporaryPasswordNote")}</p>
+              <p className="text-blue-900/85 dark:text-blue-200/90">
+                {t("admin.users.temporaryPasswordNoteDetail")}
+              </p>
+            </div>
           </div>
           <DialogFooter className={rtl ? "sm:flex-row-reverse sm:justify-start" : undefined}>
             <Button
@@ -615,7 +786,6 @@ export function AdminUsersPanel() {
               onClick={() => {
                 setActivateOpen(false)
                 setActivateTarget(null)
-                setActivatePassword("")
               }}
             >
               {t("admin.common.cancel")}
@@ -627,7 +797,64 @@ export function AdminUsersPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={resetPwdTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !resetPwdBusy) setResetPwdTarget(null)
+        }}
+      >
+        <DialogContent dir={rtl ? "rtl" : "ltr"} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle
+              className={cn("flex items-center gap-2 text-start", rtl && "flex-row-reverse text-end")}
+            >
+              <AlertTriangleIcon className="size-5 shrink-0 text-amber-600 dark:text-amber-500" aria-hidden />
+              <span>{t("admin.users.resetPasswordTitle")}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className={cn("space-y-4 text-sm", rtl && "text-end")}>
+            <p className="text-foreground">
+              {t("admin.users.resetPasswordPrompt", { name: resetPwdTarget?.name ?? "" })}
+            </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 font-medium text-amber-950 dark:border-amber-800 dark:bg-amber-950/25 dark:text-amber-100">
+              {t("admin.users.resetPasswordTempNotice", {
+                tempPassword: ADMIN_DEFAULT_TEMP_PASSWORD,
+              })}
+            </div>
+            <div
+              className={cn(
+                "flex gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-blue-950 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100",
+                rtl && "flex-row-reverse text-end",
+              )}
+            >
+              <AlertCircleIcon className="size-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" aria-hidden />
+              <p>{t("admin.users.resetPasswordNextLogin")}</p>
+            </div>
+          </div>
+          <DialogFooter className={rtl ? "sm:flex-row-reverse sm:justify-start" : undefined}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={resetPwdBusy}
+              onClick={() => setResetPwdTarget(null)}
+            >
+              {t("admin.common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={resetPwdBusy}
+              className="gap-2"
+              onClick={() => void confirmResetPassword()}
+            >
+              {resetPwdBusy ? <Loader2Icon className="size-4 animate-spin" aria-hidden /> : null}
+              {t("admin.users.resetPasswordConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
+    </TooltipProvider>
   )
 }
 

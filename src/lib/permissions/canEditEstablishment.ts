@@ -10,11 +10,12 @@ export type EstablishmentEditUser = {
   areas?: string[] | null
 }
 
+const ESTABLISHMENT_CRUD_ROLES: SessionRole[] = ["admin", "supervisor", "inspector"]
+
 /**
- * Admin: full access. Supervisor / inspector: only establishments in assigned areas.
- * Viewer: no edit access.
+ * Area gate for inspection-linked flows: admin all; viewer none; supervisor / inspector only assigned areas.
  */
-export function canEditEstablishment(
+export function canAccessEstablishmentArea(
   establishment: EstablishmentEditPermissionSubject,
   currentUser: EstablishmentEditUser,
 ): boolean {
@@ -26,4 +27,13 @@ export function canEditEstablishment(
 
   const userAreaIds = currentUser.areas ?? []
   return userAreaIds.includes(String(aid))
+}
+
+/** Establishment create/update/delete in UI: admin, supervisor, and inspector. */
+export function canEditEstablishment(
+  _establishment: EstablishmentEditPermissionSubject,
+  currentUser: EstablishmentEditUser,
+): boolean {
+  void _establishment
+  return ESTABLISHMENT_CRUD_ROLES.includes(currentUser.role)
 }

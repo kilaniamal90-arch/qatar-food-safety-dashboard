@@ -1,12 +1,13 @@
 import { EyeIcon, EyeOffIcon, GlobeIcon, Loader2Icon, LockIcon, MailIcon, MoonIcon, SunIcon } from "lucide-react"
 import { motion } from "framer-motion"
-import { useCallback, useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import toast from "react-hot-toast"
 import { Navigate, useLocation, useNavigate } from "react-router-dom"
 import { useTheme } from "next-themes"
 
 import { useAuth } from "@/auth/AuthContext"
+import { ForceChangePasswordModal } from "@/components/auth/ForceChangePasswordModal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 
 const REMEMBER_EMAIL_KEY = "qfs-login-email"
@@ -31,7 +33,17 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const fromParam = (location.state as { from?: string } | undefined)?.from
-  const { signInWithEmailPassword, isAuthenticated, authReady } = useAuth()
+  const {
+    signInWithEmailPassword,
+    isAuthenticated,
+    authReady,
+    profileReady,
+    mustChangePassword,
+    usersTableId,
+    refreshProfile,
+    session,
+    user,
+  } = useAuth()
 
   const emailId = useId()
   const passwordId = useId()
@@ -41,6 +53,23 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [logoSrc, setLogoSrc] = useState("/logo.png")
+  const [forcePasswordAfterLogin, setForcePasswordAfterLogin] = useState(false)
+  const [pendingUsersTableId, setPendingUsersTableId] = useState<string | null>(null)
+
+  const dest = useMemo(() => {
+    return fromParam && fromParam !== "/login" && !fromParam.startsWith("/login")
+      ? fromParam
+      : "/dashboard"
+  }, [fromParam])
+
+  const effectiveDbUserId = pendingUsersTableId ?? usersTableId ?? ""
+  const modalEmail = (session?.user?.email ?? user.email ?? email).trim()
+  const showForceModal =
+    Boolean(isAuthenticated && effectiveDbUserId && modalEmail) &&
+    (forcePasswordAfterLogin || (profileReady && mustChangePassword))
+
+  const waitingForProfile =
+    authReady && isAuthenticated && !profileReady && !forcePasswordAfterLogin
 
   useEffect(() => {
     try {
@@ -71,12 +100,28 @@ export function LoginPage() {
       }
       setLoading(true)
       const { error } = await signInWithEmailPassword(em, password)
-      setLoading(false)
       if (error) {
+        setLoading(false)
         toast.error(error.message)
         return
       }
-      toast.success(t("login.success"))
+
+      const { data: sessWrap } = await supabase.auth.getSession()
+      const uid = sessWrap.session?.user?.id
+      if (!uid) {
+        setLoading(false)
+        toast.error(t("auth.passwordChangeError"))
+        return
+      }
+
+      const { data: userData, error: userFetchError } = await supabase
+        .from("users")
+        .select("must_change_password, role, id, name")
+        .eq("auth_user_id", uid)
+        .maybeSingle()
+
+      setLoading(false)
+
       try {
         if (rememberMe) {
           localStorage.setItem(REMEMBER_EMAIL_KEY, em)
@@ -86,10 +131,22 @@ export function LoginPage() {
       } catch {
         /* ignore */
       }
-      const dest =
-        fromParam && fromParam !== "/login" && !fromParam.startsWith("/login")
-          ? fromParam
-          : "/dashboard"
+
+      if (userFetchError) {
+        toast.error(t("auth.networkError"))
+        navigate(dest, { replace: true })
+        return
+      }
+
+      if (userData?.must_change_password === true && userData.id) {
+        setPassword("")
+        setPendingUsersTableId(String(userData.id))
+        setForcePasswordAfterLogin(true)
+        toast.success(t("login.success"))
+        return
+      }
+
+      toast.success(t("login.success"))
       navigate(dest, { replace: true })
     },
     [
@@ -99,14 +156,10 @@ export function LoginPage() {
       loading,
       signInWithEmailPassword,
       navigate,
-      fromParam,
+      dest,
       t,
     ],
   )
-
-  if (authReady && isAuthenticated) {
-    return <Navigate to="/dashboard" replace />
-  }
 
   if (!authReady) {
     return (
@@ -126,6 +179,36 @@ export function LoginPage() {
         <Loader2Icon className="relative z-10 size-10 animate-spin text-white/90" aria-hidden />
       </div>
     )
+  }
+
+  if (waitingForProfile) {
+    return (
+      <div className="relative flex min-h-svh items-center justify-center overflow-hidden">
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#6B0F2A] via-[#4a0b1f] to-[#B8860B]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.08)_1px,transparent_0)] [background-size:20px_20px] opacity-90"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-black/20"
+          aria-hidden
+        />
+        <Loader2Icon className="relative z-10 size-10 animate-spin text-white/90" aria-hidden />
+      </div>
+    )
+  }
+
+  if (
+    authReady &&
+    isAuthenticated &&
+    profileReady &&
+    !mustChangePassword &&
+    !forcePasswordAfterLogin
+  ) {
+    return <Navigate to={dest} replace />
   }
 
   return (
@@ -259,7 +342,7 @@ export function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={t("login.emailPlaceholder")}
                     className="h-11 border-white/40 bg-white/80 px-10 dark:border-white/15 dark:bg-black/25 dark:text-white dark:placeholder:text-white/45"
-                    disabled={loading}
+                    disabled={loading || showForceModal}
                   />
                 </div>
               </div>
@@ -281,7 +364,7 @@ export function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder={t("login.passwordPlaceholder")}
                     className="h-11 border-white/40 bg-white/80 px-10 pe-12 dark:border-white/15 dark:bg-black/25 dark:text-white dark:placeholder:text-white/45"
-                    disabled={loading}
+                    disabled={loading || showForceModal}
                   />
                   <button
                     type="button"
@@ -289,6 +372,7 @@ export function LoginPage() {
                     className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white"
                     onClick={() => setShowPassword((s) => !s)}
                     aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
+                    disabled={loading || showForceModal}
                   >
                     {showPassword ? (
                       <EyeOffIcon className="size-4" aria-hidden />
@@ -310,7 +394,7 @@ export function LoginPage() {
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    disabled={loading}
+                    disabled={loading || showForceModal}
                     className="size-4 rounded border border-white/50 bg-white/50 text-[#8B1538] focus:ring-[#8B1538] dark:border-white/30 dark:bg-black/30"
                   />
                   {t("login.rememberMe")}
@@ -319,7 +403,7 @@ export function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={loading}
+                disabled={loading || showForceModal}
                 className="h-11 w-full bg-[#8B1538] text-base font-semibold text-white shadow-lg transition-all hover:bg-[#6B0F2A] dark:bg-[#8B1538] dark:hover:bg-[#a01844]"
               >
                 {loading ? (
@@ -344,6 +428,18 @@ export function LoginPage() {
           </footer>
         </motion.div>
       </div>
+
+      <ForceChangePasswordModal
+        open={showForceModal}
+        userEmail={modalEmail}
+        usersTableId={effectiveDbUserId}
+        onCompleted={async () => {
+          await refreshProfile()
+          setForcePasswordAfterLogin(false)
+          setPendingUsersTableId(null)
+          navigate(dest, { replace: true })
+        }}
+      />
     </div>
   )
 }

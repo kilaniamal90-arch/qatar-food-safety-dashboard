@@ -1,7 +1,7 @@
 import type { Establishment } from "@/data/rawData"
 
 import {
-  canEditEstablishment,
+  canAccessEstablishmentArea,
   type EstablishmentEditUser,
 } from "@/lib/permissions/canEditEstablishment"
 
@@ -22,7 +22,7 @@ export function canEditInspection(
   currentUser: EstablishmentEditUser,
   areaIdFromNames?: string | null,
 ): boolean {
-  return canEditEstablishment(
+  return canAccessEstablishmentArea(
     { area_id: resolvedEstablishmentAreaId(establishment, areaIdFromNames) },
     currentUser,
   )

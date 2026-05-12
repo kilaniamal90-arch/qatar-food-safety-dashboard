@@ -25,6 +25,75 @@ import { supabase } from "@/lib/supabase"
 import i18n from "@/i18n/config"
 import toast from "react-hot-toast"
 
+type ProfileRowState = {
+  usersTableId: string
+  role: SessionRole
+  areaIds: string[]
+  canImport: boolean
+  isActive: boolean
+  name: string | null
+  mustChangePassword: boolean
+}
+
+async function fetchUsersProfileRow(authUserId: string): Promise<ProfileRowState | null> {
+  const sel = `
+      id,
+      role,
+      can_import,
+      is_active,
+      name,
+      must_change_password,
+      user_areas ( area_id )
+    `
+  const first = await supabase.from("users").select(sel).eq("auth_user_id", authUserId).maybeSingle()
+
+  type RowData = {
+    id?: string
+    role?: string
+    can_import?: boolean
+    is_active?: boolean
+    name?: string | null
+    must_change_password?: boolean | null
+    user_areas?: { area_id: string }[] | null
+  }
+
+  let data = first.data as RowData | null
+  let error = first.error
+
+  if (
+    error &&
+    (error.message.includes("user_areas") ||
+      error.message.includes("schema cache") ||
+      error.code === "PGRST200")
+  ) {
+    const retry = await supabase
+      .from("users")
+      .select("id, role, can_import, is_active, name, must_change_password")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle()
+    data = retry.data as RowData | null
+    error = retry.error
+  }
+
+  if (error || !data?.id) return null
+
+  const row = data
+  const role = profileRoleFromUsersTable(row.role)
+  const areaIds =
+    row.user_areas?.map((x) => String(x.area_id)).filter((x) => x.trim()) ?? []
+  const fn = (typeof row.name === "string" && row.name.trim()) || null
+
+  return {
+    usersTableId: String(row.id),
+    role,
+    areaIds,
+    canImport: Boolean(row.can_import),
+    isActive: row.is_active !== false,
+    name: fn,
+    mustChangePassword: row.must_change_password === true,
+  }
+}
+
 export type SessionUser = {
   id: string
   name: string
@@ -41,6 +110,14 @@ type AuthValue = {
   canImport: boolean
   isAuthenticated: boolean
   authReady: boolean
+  /** Row in `public.users` loaded for this session (null if missing). */
+  profileReady: boolean
+  /** True when the users row requires a password change before using the app. */
+  mustChangePassword: boolean
+  /** Primary key of `public.users` for this session. */
+  usersTableId: string | null
+  /** Re-fetch profile from `users` (e.g. after mandatory password change). */
+  refreshProfile: () => Promise<void>
   session: Session | null
   setRoleDev: (role: SessionRole) => void
   setAssignedAreaIdsDev: (areaIds: string[]) => void
@@ -92,13 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false)
   const [roleOverride, setRoleOverride] = useState<SessionRole>(readStoredRole)
   const [areaIdsOverride, setAreaIdsOverride] = useState<string[]>(readStoredAreaIds)
-  const [profileRow, setProfileRow] = useState<{
-    role: SessionRole
-    areaIds: string[]
-    canImport: boolean
-    isActive: boolean
-    name: string | null
-  } | null>(null)
+  const [profileRow, setProfileRow] = useState<ProfileRowState | null>(null)
   const [profileReady, setProfileReady] = useState(false)
 
   useEffect(() => {
@@ -142,65 +213,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setProfileReady(false)
     void (async () => {
-      const sel = `
-          role,
-          can_import,
-          is_active,
-          name,
-          user_areas ( area_id )
-        `
-      const first = await supabase
-        .from("users")
-        .select(sel)
-        .eq("auth_user_id", session.user.id)
-        .maybeSingle()
-
-      let data = first.data as {
-        role?: string
-        can_import?: boolean
-        is_active?: boolean
-        name?: string | null
-        user_areas?: { area_id: string }[] | null
-      } | null
-      let error = first.error
-
-      if (
-        error &&
-        (error.message.includes("user_areas") ||
-          error.message.includes("schema cache") ||
-          error.code === "PGRST200")
-      ) {
-        const retry = await supabase
-          .from("users")
-          .select("role, can_import, is_active, name")
-          .eq("auth_user_id", session.user.id)
-          .maybeSingle()
-        data = retry.data as typeof data
-        error = retry.error
-      }
+      const mapped = await fetchUsersProfileRow(session.user.id)
 
       if (cancelled) return
 
-      if (error || !data) {
+      if (!mapped) {
         setProfileRow(null)
         setProfileReady(true)
         return
       }
 
-      const row = data
-      const r = row.role
-      const role = profileRoleFromUsersTable(r)
-      const areaIds =
-        row.user_areas?.map((x) => String(x.area_id)).filter((x) => x.trim()) ?? []
-      const fn = (typeof row.name === "string" && row.name.trim()) || null
-
-      setProfileRow({
-        role,
-        areaIds,
-        canImport: Boolean(row.can_import),
-        isActive: row.is_active !== false,
-        name: fn,
-      })
+      setProfileRow(mapped)
       setProfileReady(true)
     })()
     return () => {
@@ -251,6 +274,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? new Error(error.message) : null }
   }, [])
 
+  const refreshProfile = useCallback(async () => {
+    const uid = session?.user?.id
+    if (!uid) return
+    const mapped = await fetchUsersProfileRow(uid)
+    setProfileRow(mapped)
+    setProfileReady(true)
+  }, [session?.user?.id])
+
   const value = useMemo<AuthValue>(() => {
     const isAuthenticated = Boolean(session?.user)
     if (!isAuthenticated || !session?.user) {
@@ -266,6 +297,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canImport: false,
         isAuthenticated: false,
         authReady,
+        profileReady: true,
+        mustChangePassword: false,
+        usersTableId: null,
+        refreshProfile,
         session,
         setRoleDev,
         setAssignedAreaIdsDev,
@@ -301,6 +336,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canImport: profileRow ? profileRow.canImport : effectiveRole !== "viewer",
       isAuthenticated: true,
       authReady,
+      profileReady,
+      mustChangePassword: Boolean(profileRow?.mustChangePassword),
+      usersTableId: profileRow?.usersTableId ?? null,
+      refreshProfile,
       session,
       setRoleDev,
       setAssignedAreaIdsDev,
@@ -311,9 +350,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [
     session,
     authReady,
+    profileReady,
     roleOverride,
     areaIdsOverride,
     profileRow,
+    refreshProfile,
     signInWithEmailPassword,
     signOut,
     resetPasswordForEmail,

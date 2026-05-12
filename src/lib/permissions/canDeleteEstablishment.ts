@@ -4,7 +4,7 @@ import {
   type EstablishmentEditUser,
 } from "@/lib/permissions/canEditEstablishment"
 
-/** Same area/role rules as edit: admin all; viewer none; inspector roles only assigned areas. */
+/** Same role rules as establishment edit: admin, supervisor, inspector. */
 export function canDeleteEstablishment(
   establishment: EstablishmentEditPermissionSubject,
   currentUser: EstablishmentEditUser,

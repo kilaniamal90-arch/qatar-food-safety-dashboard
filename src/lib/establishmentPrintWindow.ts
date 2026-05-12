@@ -346,12 +346,15 @@ ${opts.inspections
 
 /**
  * When `window.open` is blocked or unreliable (common on Android Chrome), load the blob document in an
- * iframe and call print after a delay so layout/fonts settle.
+ * iframe and call print after `load` plus a delay so layout and chart images settle (Android often prints
+ * blank if print() runs too early).
  */
 function printEstablishmentFromBlobUrlInIframe(
   blobUrl: string,
-  printDelayMs: number,
   androidLayout: boolean,
+  htmlContent: string,
+  /** Delay after iframe load when not on Android (chart-aware delays apply only to Android). */
+  delayAfterLoadNonAndroidMs: number,
 ): boolean {
   const iframe = document.createElement("iframe")
   iframe.setAttribute("aria-hidden", "true")
@@ -386,11 +389,23 @@ function printEstablishmentFromBlobUrlInIframe(
     return false
   }
 
+  const postLoadDelayMs = androidLayout
+    ? htmlContent.includes("print-chart-img") || htmlContent.includes("chart-image")
+      ? 2_500
+      : 1_500
+    : delayAfterLoadNonAndroidMs
+
   const runPrint = () => {
     const win = iframe.contentWindow
     if (!win) {
       cleanup()
       return
+    }
+
+    try {
+      void win.document.body?.offsetHeight
+    } catch {
+      /* ignore */
     }
 
     const onAfterPrint = () => {
@@ -405,16 +420,16 @@ function printEstablishmentFromBlobUrlInIframe(
     try {
       win.focus()
       win.print()
-    } catch {
+    } catch (err) {
+      console.error("[establishmentPrint] Print failed:", err)
       cleanup()
     }
   }
 
-  iframe.addEventListener(
-    "load",
-    () => window.setTimeout(runPrint, printDelayMs),
-    { once: true },
-  )
+  iframe.onload = () => {
+    window.setTimeout(runPrint, postLoadDelayMs)
+  }
+
   iframe.src = blobUrl
 
   return true
@@ -442,13 +457,8 @@ export function openEstablishmentPrintWindow(html: string): boolean {
   const isMobile = /Android|iPhone|iPad/i.test(ua)
   const hasHeavyPrint = html.includes("print-chart-img")
 
-  const delayAfterLoadIframe = isAndroid
-    ? hasHeavyPrint
-      ? 2_600
-      : 2_000
-    : hasHeavyPrint
-      ? 900
-      : 450
+  /** Non-Android iframe path: delay after `load` before print (Android uses chart-aware delays inside iframe helper). */
+  const delayAfterLoadIframeNonAndroid = hasHeavyPrint ? 900 : 450
 
   const delayAfterLoadPopup = isMobile ? (hasHeavyPrint ? 2_000 : 1_200) : hasHeavyPrint ? 1_000 : 550
 
@@ -458,7 +468,12 @@ export function openEstablishmentPrintWindow(html: string): boolean {
   const popupUrl = URL.createObjectURL(blob)
 
   const runIframePrint = (blobUrl: string, androidLayout: boolean): boolean => {
-    const ok = printEstablishmentFromBlobUrlInIframe(blobUrl, delayAfterLoadIframe, androidLayout)
+    const ok = printEstablishmentFromBlobUrlInIframe(
+      blobUrl,
+      androidLayout,
+      html,
+      delayAfterLoadIframeNonAndroid,
+    )
     if (!ok) {
       if (import.meta.env.DEV) {
         console.warn("[establishmentPrint] iframe print failed — opening document in same tab")
