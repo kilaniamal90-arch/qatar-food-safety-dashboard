@@ -391,8 +391,8 @@ function printEstablishmentFromBlobUrlInIframe(
 
   const postLoadDelayMs = androidLayout
     ? htmlContent.includes("print-chart-img") || htmlContent.includes("chart-image")
-      ? 2_500
-      : 1_500
+      ? 3_500
+      : 2_500
     : delayAfterLoadNonAndroidMs
 
   const runPrint = () => {
@@ -427,7 +427,51 @@ function printEstablishmentFromBlobUrlInIframe(
   }
 
   iframe.onload = () => {
-    window.setTimeout(runPrint, postLoadDelayMs)
+    const win = iframe.contentWindow
+    if (!win) {
+      window.setTimeout(runPrint, postLoadDelayMs)
+      return
+    }
+
+    const images = Array.from(win.document.images)
+    if (images.length === 0) {
+      window.setTimeout(runPrint, postLoadDelayMs)
+      return
+    }
+
+    let printScheduled = false
+    const fallback = window.setTimeout(() => {
+      if (printScheduled) return
+      printScheduled = true
+      runPrint()
+    }, postLoadDelayMs + 3_000)
+
+    let loaded = 0
+    const total = images.length
+    const onImageLoad = () => {
+      if (printScheduled) return
+      loaded++
+      if (loaded >= total) {
+        printScheduled = true
+        window.clearTimeout(fallback)
+        window.setTimeout(runPrint, androidLayout ? 800 : 300)
+      }
+    }
+
+    images.forEach((img) => {
+      if (img.complete) {
+        loaded++
+      } else {
+        img.addEventListener("load", onImageLoad, { once: true })
+        img.addEventListener("error", onImageLoad, { once: true })
+      }
+    })
+
+    if (loaded >= total) {
+      printScheduled = true
+      window.clearTimeout(fallback)
+      window.setTimeout(runPrint, androidLayout ? 800 : 300)
+    }
   }
 
   iframe.src = blobUrl

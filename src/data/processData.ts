@@ -7,6 +7,7 @@ import type {
   OperationalStatus,
   YearFilter,
 } from "@/data/rawData"
+import { isDashboardAreaAggregate } from "@/data/rawData"
 
 // ─── Translation keys (must match keys in en.ts / ar.ts) ─────────────────────
 
@@ -180,10 +181,9 @@ export function processDataFromSlices(
     OperationalStatus | null
   > | null,
 ): ProcessedData {
-  const filteredEst =
-    area === "all"
-      ? rawEstablishments
-      : rawEstablishments.filter((e) => e.area === area)
+  const filteredEst = isDashboardAreaAggregate(area)
+    ? rawEstablishments
+    : rawEstablishments.filter((e) => e.area === area)
 
   const estNameSet = new Set(filteredEst.map((e) => e.name))
 
@@ -308,10 +308,9 @@ function countDatedInspectionsInCalendarYear(
   calendarYear: number,
   area: AreaFilter,
 ): number {
-  const filteredEst =
-    area === "all"
-      ? rawEstablishments
-      : rawEstablishments.filter((e) => e.area === area)
+  const filteredEst = isDashboardAreaAggregate(area)
+    ? rawEstablishments
+    : rawEstablishments.filter((e) => e.area === area)
 
   const estNameSet = new Set(filteredEst.map((e) => e.name))
 

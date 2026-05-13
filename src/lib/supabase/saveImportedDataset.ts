@@ -336,6 +336,54 @@ function buildLabelMap(rows: Record<string, unknown>[]): Map<string, string> {
   return m
 }
 
+/** Single Arabic warning when an import row’s area label does not match `areas` in Supabase. */
+function pushArabicUnknownAreaEstablishmentWarning(
+  warnings: string[],
+  establishmentName: string,
+  areaLabel: string,
+  areaRows: Record<string, unknown>[],
+) {
+  const areaList = areaRows
+    .map((a, i) => {
+      const nameAr = String(a.name_ar ?? "").trim()
+      const nameEn = String(a.name_en ?? "").trim()
+      const suffix = nameEn ? ` (${nameEn})` : ""
+      return `${i + 1}- ${nameAr}${suffix}`
+    })
+    .join("\n")
+  warnings.push(
+    `⚠️ لم يتم استيراد المنشأة "${establishmentName}" لأن المنطقة "${areaLabel}" غير مسجلة في النظام.\n` +
+      `المناطق المسجلة في النظام:\n${areaList}`,
+  )
+}
+
+function bumpUnknownEstablishmentSkip(
+  m: Map<string, { insp: number; hist: number }>,
+  establishmentName: string,
+  kind: "insp" | "hist",
+) {
+  const cur = m.get(establishmentName) ?? { insp: 0, hist: 0 }
+  if (kind === "insp") cur.insp += 1
+  else cur.hist += 1
+  m.set(establishmentName, cur)
+}
+
+/** One grouped Arabic message per establishment missing from DB after import (skipped status rows + inspections). */
+function flushUnknownEstablishmentSkipWarnings(
+  warnings: string[],
+  m: Map<string, { insp: number; hist: number }>,
+) {
+  for (const [estName, c] of m) {
+    if (c.insp === 0 && c.hist === 0) continue
+    const segments: string[] = []
+    if (c.insp > 0) segments.push(`${c.insp} تفتيش`)
+    if (c.hist > 0) segments.push(`${c.hist} سجل حالة`)
+    warnings.push(
+      `⚠️ تم تخطي ${segments.join(" و ")} المرتبطة بالمنشأة "${estName}" بسبب عدم استيرادها.`,
+    )
+  }
+}
+
 function buildRatingMap(rows: Record<string, unknown>[]): Map<InspectionRating, string> {
   const byLabel = buildLabelMap(rows)
   const out = new Map<InspectionRating, string>()
@@ -622,7 +670,7 @@ export async function saveImportedDatasetToSupabase(
       const e = u.fileEstablishment
       const areaId = areaByLabel.get(normKey(String(e.area ?? "").trim()))
       if (!areaId) {
-        warnings.push(`phase2 update "${e.name}": unknown area "${e.area}" — skipped`)
+        pushArabicUnknownAreaEstablishmentWarning(warnings, e.name, String(e.area ?? ""), areaRows)
         continue
       }
       const statusId = statusByOperational.get(e.operationalStatus)
@@ -745,7 +793,7 @@ export async function saveImportedDatasetToSupabase(
       }
 
       if (!areaId) {
-        warnings.push(`establishment "${e.name}": unknown area "${e.area}" — skipped`)
+        pushArabicUnknownAreaEstablishmentWarning(warnings, e.name, String(e.area ?? ""), areaRows)
         establishmentsSkippedInvalid += 1
         continue
       }
@@ -822,6 +870,8 @@ export async function saveImportedDatasetToSupabase(
       emitProgress()
     }
 
+    const unknownEstablishmentSkips = new Map<string, { insp: number; hist: number }>()
+
     prog.phase = "statusHistory"
     emitProgress()
     if (importStatusHistoryRows.length > 0) {
@@ -843,8 +893,10 @@ export async function saveImportedDatasetToSupabase(
         const estId = nameKeyToDbId.get(normKey(h.establishmentName))
         if (!estId) {
           statusHistorySkippedInvalid += 1
-          warnings.push(
-            `status history (${h.year}): unknown establishment "${h.establishmentName}"`,
+          bumpUnknownEstablishmentSkip(
+            unknownEstablishmentSkips,
+            h.establishmentName,
+            "hist",
           )
           prog.statusHistory.done += 1
           emitProgress()
@@ -943,8 +995,10 @@ export async function saveImportedDatasetToSupabase(
 
       const estId = nameKeyToDbId.get(normKey(insp.establishmentName))
       if (!estId) {
-        warnings.push(
-          `inspection ${logRef}: unknown establishment "${insp.establishmentName}"`,
+        bumpUnknownEstablishmentSkip(
+          unknownEstablishmentSkips,
+          insp.establishmentName,
+          "insp",
         )
         inspectionsSkippedInvalid += 1
         continue
@@ -1019,6 +1073,8 @@ export async function saveImportedDatasetToSupabase(
         ...(yearId ? { year_id: yearId } : {}),
       })
     }
+
+    flushUnknownEstablishmentSkipWarnings(warnings, unknownEstablishmentSkips)
 
     prog.phase = "inspections"
     prog.inspections.total = inspPayload.length

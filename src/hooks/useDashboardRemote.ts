@@ -30,6 +30,8 @@ export function useDashboardRemote(
   areas: ManagedArea[],
   areasLoading: boolean,
   dateUnknownLabel: string,
+  /** `auth.user.areas` — used when `area === "my-areas"` to scope establishments. */
+  assignedAreaIds: readonly string[],
 ) {
   const [establishments, setEstablishments] = useState<Establishment[]>([])
   const [inspections, setInspections] = useState<Inspection[]>([])
@@ -53,16 +55,32 @@ export function useDashboardRemote(
   const [error, setError] = useState<string | null>(null)
 
   const areaId = useMemo(() => {
-    if (area === "all") return null
+    if (area === "all" || area === "my-areas") return null
     const hit = areas.find((a) => a.nameAr === area || a.nameEn === area)
     return hit?.id ?? null
   }, [area, areas])
 
   const load = useCallback(async () => {
-    if (area !== "all" && (areasLoading || areas.length === 0)) {
+    if (
+      area !== "all" &&
+      area !== "my-areas" &&
+      (areasLoading || areas.length === 0)
+    ) {
       return
     }
-    if (area !== "all" && !areaId) {
+    if (area !== "all" && area !== "my-areas" && !areaId) {
+      setEstablishments([])
+      setInspections([])
+      setInspectionsAll([])
+      setOperationalStatusForYearByEstId(null)
+      setOperationalStatusCurrentYearByEstId(null)
+      setReinspectionSeed({ ratings: [], periods: [] })
+      setLoading(false)
+      setError(null)
+      return
+    }
+
+    if (area === "my-areas" && assignedAreaIds.length === 0) {
       setEstablishments([])
       setInspections([])
       setInspectionsAll([])
@@ -90,10 +108,16 @@ export function useDashboardRemote(
     setLoading(true)
     setError(null)
     try {
-      const est = await fetchEstablishmentsRemote(
-        supabase,
-        area === "all" ? undefined : areaId ?? undefined,
-      )
+      let fetchScope: string | string[] | undefined
+      if (area === "all") {
+        fetchScope = undefined
+      } else if (area === "my-areas") {
+        fetchScope = [...assignedAreaIds]
+      } else {
+        fetchScope = areaId ?? undefined
+      }
+
+      const est = await fetchEstablishmentsRemote(supabase, fetchScope)
       const ids = est.map((e) => e.id)
       const y = calendarYear
       const statusYearNow = new Date().getFullYear()
@@ -168,7 +192,7 @@ export function useDashboardRemote(
     } finally {
       setLoading(false)
     }
-  }, [area, areaId, areas, areasLoading, year])
+  }, [area, areaId, areas, areasLoading, year, assignedAreaIds])
 
   useEffect(() => {
     void load()
@@ -233,7 +257,12 @@ export function useDashboardRemote(
   )
 
   return {
-    loading: loading || (area !== "all" && areasLoading && areas.length === 0),
+    loading:
+      loading ||
+      (area !== "all" &&
+        area !== "my-areas" &&
+        areasLoading &&
+        areas.length === 0),
     error,
     processedData,
     inspectionsTrendPct,

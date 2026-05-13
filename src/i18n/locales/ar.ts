@@ -155,6 +155,7 @@ export const ar = {
     // ── Area names ──────────────────────────────────────────
     areas: {
       all: "جميع المناطق",
+      myAreas: "مناطقي",
       doha: "الدوحة",
       rayyan: "الريان",
       wakrah: "الوكرة",

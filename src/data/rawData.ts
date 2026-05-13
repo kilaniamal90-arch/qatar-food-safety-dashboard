@@ -41,8 +41,17 @@ export const AREAS_AR = [
   "الشمال",
 ] as const
 export type AreaAr = (typeof AREAS_AR)[number]
-/** `"all"` or a label matching Supabase `areas.name_ar` / `name_en` (or legacy mock Arabic names). */
-export type AreaFilter = "all" | AreaAr | (string & {})
+/**
+ * `"all"` = nationwide (admins).
+ * `"my-areas"` = all jurisdictions assigned to the current non-admin user (`user_areas`).
+ * Otherwise a label matching Supabase `areas.name_ar` / `name_en` (or legacy mock Arabic names).
+ */
+export type AreaFilter = "all" | "my-areas" | AreaAr | (string & {})
+
+/** Multi-area / aggregate slice: no extra client-side filter by `establishment.area` string. */
+export function isDashboardAreaAggregate(area: AreaFilter): boolean {
+  return area === "all" || area === "my-areas"
+}
 
 /** Dashboard / events calendar year string (e.g. `"2026"`); should match an active `years.year`. */
 export type YearFilter = string

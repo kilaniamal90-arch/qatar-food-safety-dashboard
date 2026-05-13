@@ -1,7 +1,9 @@
 import { CalendarIcon, ChevronDownIcon, Loader2Icon, MapPinIcon, RefreshCwIcon } from "lucide-react"
 import type { ElementType } from "react"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
+import { useAuth } from "@/auth/AuthContext"
 import type { ManagedArea } from "@/admin/types"
 import type { AreaFilter, YearFilter } from "@/data/rawData"
 import { Button } from "@/components/ui/button"
@@ -78,6 +80,7 @@ function areaOptionLabel(
   t: (key: string) => string,
 ): string {
   if (value === "all") return t("dashboard.areas.all")
+  if (value === "my-areas") return t("dashboard.areas.myAreas")
   const row = areas.find((a) => a.nameAr === value || a.nameEn === value)
   if (!row) return String(value)
   return lang === "ar" ? row.nameAr : row.nameEn || row.nameAr
@@ -105,11 +108,14 @@ export function DashboardFilters({
   onRefreshAreas: () => void
 }) {
   const { t, i18n } = useTranslation()
+  const { isAdmin } = useAuth()
 
-  const areaValues: AreaFilter[] = [
-    "all",
-    ...areas.map((a) => a.nameAr as AreaFilter),
-  ]
+  const areaValues = useMemo((): AreaFilter[] => {
+    const nameArs = areas.map((a) => a.nameAr as AreaFilter)
+    if (isAdmin) return ["all", ...nameArs]
+    if (nameArs.length <= 1) return [...nameArs]
+    return ["my-areas", ...nameArs]
+  }, [isAdmin, areas])
 
   return (
     <div className="space-y-4">

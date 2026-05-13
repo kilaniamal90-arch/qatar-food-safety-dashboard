@@ -23,6 +23,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -50,7 +51,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { InspectionRating, OperationalStatus } from "@/data/rawData"
+import type {
+  AreaFilter,
+  InspectionRating,
+  OperationalStatus,
+} from "@/data/rawData"
+import { isDashboardAreaAggregate } from "@/data/rawData"
 import { useFilterAreas } from "@/hooks/useFilterAreas"
 import { useEstablishments } from "@/hooks/useEstablishments"
 import type { DataTableSortMode, EnrichedEstablishmentRow } from "@/lib/dataTableModel"
@@ -263,6 +269,18 @@ function readStoredViewMode(): ViewMode {
   return "list"
 }
 
+/** Non-admins must never query with `all`; map to `my-areas` until the UI selection catches up. */
+function resolveRemoteEstablishmentsArea(
+  isAdmin: boolean,
+  area: AreaFilter,
+  assignedIds: readonly string[],
+): AreaFilter {
+  if (isAdmin) return area
+  if (assignedIds.length === 0) return "my-areas"
+  if (area === "all") return "my-areas"
+  return area
+}
+
 export function EstablishmentsPage() {
   const { t, i18n } = useTranslation()
   const isRtl = i18n.language.startsWith("ar")
@@ -273,7 +291,7 @@ export function EstablishmentsPage() {
 
   const [viewMode, setViewMode] = useState<ViewMode>(() => readStoredViewMode())
   const [search, setSearch] = useState("")
-  const [area, setArea] = useState<string>("all")
+  const [area, setArea] = useState<AreaFilter>("all")
   const [statusFilter, setStatusFilter] = useState<OperationalStatus | "all">("all")
   const [ratingFilter, setRatingFilter] = useState<InspectionRating | "all">("all")
   const [sortMode, setSortMode] = useState<DataTableSortMode>("name_az")
@@ -297,7 +315,7 @@ export function EstablishmentsPage() {
     () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches,
   )
 
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)")
@@ -326,11 +344,41 @@ export function EstablishmentsPage() {
     }
   }, [location.pathname, refetchAreas])
 
+  useLayoutEffect(() => {
+    if (isAdmin) return
+    if (user.areas.length === 0) return
+    setArea((a) => {
+      if (a !== "all") return a
+      return user.areas.length >= 2 ? "my-areas" : a
+    })
+  }, [isAdmin, user.areas])
+
+  useLayoutEffect(() => {
+    if (isAdmin || areasLoading) return
+    if (user.areas.length !== 1) return
+    const row = areaRows.find((x) => x.id === user.areas[0])
+    if (!row) return
+    setArea((a) =>
+      a === "all" || a === "my-areas" ? (row.nameAr as AreaFilter) : a,
+    )
+  }, [isAdmin, areasLoading, user.areas, areaRows])
+
+  const remoteArea = useMemo(
+    () => resolveRemoteEstablishmentsArea(isAdmin, area, user.areas),
+    [isAdmin, area, user.areas],
+  )
+
   const areaIdResolved = useMemo(() => {
-    if (area === "all") return undefined
-    const hit = areaRows.find((x) => x.nameAr === area || x.nameEn === area)
+    if (remoteArea === "all") return undefined
+    if (remoteArea === "my-areas") return null
+    const hit = areaRows.find((x) => x.nameAr === remoteArea || x.nameEn === remoteArea)
     return hit?.id
-  }, [area, areaRows])
+  }, [remoteArea, areaRows])
+
+  const areaIdsForFetch = useMemo(
+    () => (remoteArea === "my-areas" ? [...user.areas] : undefined),
+    [remoteArea, user.areas],
+  )
 
   const {
     sortedAll,
@@ -340,7 +388,8 @@ export function EstablishmentsPage() {
     refetch: refetchRows,
   } = useEstablishments({
     search,
-    areaId: areaIdResolved,
+    areaId: areaIdResolved ?? undefined,
+    areaIds: areaIdsForFetch,
     statusEn: statusFilter,
     ratingEn: ratingFilter,
     sortMode,
@@ -435,16 +484,19 @@ export function EstablishmentsPage() {
     [sortedAll, visibleCount],
   )
 
-  const areaOptions = useMemo(
-    () => ["all", ...areaRows.map((r) => r.nameAr)] as string[],
-    [areaRows],
-  )
+  const areaOptions = useMemo((): AreaFilter[] => {
+    const nameArs = areaRows.map((r) => r.nameAr as AreaFilter)
+    if (isAdmin) return ["all", ...nameArs]
+    if (nameArs.length <= 1) return [...nameArs]
+    return ["my-areas", ...nameArs]
+  }, [isAdmin, areaRows])
 
   const areaSelectLabel = useCallback(
-    (a: string) => {
+    (a: AreaFilter) => {
       if (a === "all") return t("dataTable.filter.allAreas")
+      if (a === "my-areas") return t("dashboard.areas.myAreas")
       const row = areaRows.find((x) => x.nameAr === a || x.nameEn === a)
-      if (!row) return a
+      if (!row) return String(a)
       return i18n.language === "ar" ? row.nameAr : row.nameEn || row.nameAr
     },
     [areaRows, i18n.language, t],
@@ -460,11 +512,22 @@ export function EstablishmentsPage() {
   )
 
   useEffect(() => {
-    if (area === "all") return
+    if (isDashboardAreaAggregate(area)) return
     if (areasLoading) return
     const ok = areaRows.some((x) => x.nameAr === area || x.nameEn === area)
-    if (!ok) setArea("all")
-  }, [areaRows, area, areasLoading])
+    if (!ok) {
+      setArea(
+        isAdmin
+          ? "all"
+          : user.areas.length >= 2
+            ? "my-areas"
+            : user.areas.length === 1
+              ? ((areaRows.find((x) => x.id === user.areas[0])?.nameAr as AreaFilter) ??
+                "my-areas")
+              : "all",
+      )
+    }
+  }, [areaRows, area, areasLoading, isAdmin, user.areas])
 
   const statusLabel = useCallback(
     (s: OperationalStatus) => {
@@ -596,7 +659,16 @@ export function EstablishmentsPage() {
 
   const clearFilters = () => {
     setSearch("")
-    setArea("all")
+    if (isAdmin) {
+      setArea("all")
+    } else if (user.areas.length >= 2) {
+      setArea("my-areas")
+    } else if (user.areas.length === 1) {
+      const row = areaRows.find((x) => x.id === user.areas[0])
+      setArea((row?.nameAr as AreaFilter) ?? "my-areas")
+    } else {
+      setArea("all")
+    }
     setStatusFilter("all")
     setRatingFilter("all")
     setSortMode("name_az")
@@ -948,7 +1020,7 @@ export function EstablishmentsPage() {
                         id="est-area"
                         value={area}
                         disabled={areasLoading && areaRows.length === 0}
-                        onChange={(e) => setArea(e.target.value)}
+                        onChange={(e) => setArea(e.target.value as AreaFilter)}
                         className={cn(selectBase, "min-w-0 flex-1")}
                       >
                         {areaOptions.map((a) => (

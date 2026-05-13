@@ -266,7 +266,7 @@ export function mapEstablishmentApiRow(
   const operationalStatus = resolveOperationalStatusFromApiRow(row)
 
   const cr =
-    String(pickFirst(row, ["cr_number", "crNumber"]) ?? "").trim() || id.slice(0, 12)
+    String(pickFirst(row, ["cr_number", "crNumber"]) ?? "").trim() || ""
 
   const location = String(pickFirst(row, ["location"]) ?? "—").trim() || "—"
   const activityType =
@@ -414,16 +414,26 @@ function chunks<T>(arr: readonly T[], size: number): T[][] {
 }
 
 /** Establishments with embedded area (operational status is year-scoped via `establishment_status_history`). */
+/** Pass `undefined` for no filter; `string` for one `area_id`; `string[]` for several (`IN`). */
 export async function fetchEstablishmentsRemote(
   supabase: SupabaseClient,
-  areaId?: string | null,
+  areaScope?: string | string[] | null,
 ): Promise<Establishment[]> {
   let q = supabase.from("establishments").select(`
       *,
       areas(name_ar, name_en)
     `)
 
-  if (areaId) q = q.eq("area_id", areaId)
+  if (areaScope != null && areaScope !== "") {
+    if (Array.isArray(areaScope)) {
+      if (areaScope.length === 0) {
+        return []
+      }
+      q = q.in("area_id", areaScope)
+    } else {
+      q = q.eq("area_id", areaScope)
+    }
+  }
 
   const { data, error } = await q
   if (error) throw new Error(error.message)
@@ -867,6 +877,8 @@ export async function fetchInspectionsForEstablishmentsAndYear(
 export type EstablishmentsViewFilters = {
   search?: string
   areaId?: string | null
+  /** When non-empty, restricts to these `area_id` values (non-admin “my areas”). */
+  areaIds?: string[]
   statusEn?: OperationalStatus | "all"
   ratingEn?: InspectionRating | "all"
 }
@@ -916,12 +928,17 @@ export async function fetchEstablishmentsViewFiltered(
     .select("*")
     .limit(maxRows)
 
-  const { search, areaId, statusEn, ratingEn } = filters
+  const { search, areaId, areaIds, statusEn, ratingEn } = filters
 
   if (search?.trim()) {
     q = q.ilike("name", `%${search.trim()}%`)
   }
-  if (areaId) q = q.eq("area_id", areaId)
+  if (areaIds !== undefined) {
+    if (areaIds.length === 0) return []
+    q = q.in("area_id", areaIds)
+  } else if (areaId) {
+    q = q.eq("area_id", areaId)
+  }
 
   if (statusEn && statusEn !== "all") {
     const statusId = await fetchOperationalStatusIdByNameEn(supabase, statusEn)

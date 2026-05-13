@@ -34,6 +34,7 @@ export function useEstablishments(filters: UseEstablishmentsFilters) {
   const filterKey = JSON.stringify({
     search: filters.search ?? "",
     areaId: filters.areaId ?? "",
+    areaIds: filters.areaIds ?? null,
     statusEn: filters.statusEn ?? "",
     ratingEn: filters.ratingEn ?? "",
     dateUnknownLabel: filters.dateUnknownLabel ?? "—",
@@ -51,6 +52,7 @@ export function useEstablishments(filters: UseEstablishmentsFilters) {
           fetchEstablishmentsViewFiltered(supabase, {
             search: filters.search,
             areaId: filters.areaId,
+            areaIds: filters.areaIds,
             statusEn: filters.statusEn,
             ratingEn: filters.ratingEn,
           }),

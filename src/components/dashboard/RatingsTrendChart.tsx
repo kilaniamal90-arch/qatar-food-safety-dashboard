@@ -73,6 +73,7 @@ function ratingTranslationKey(rating: InspectionRating): string {
 
 function areaExportSlug(area: AreaFilter, areas: ManagedArea[]): string {
   if (area === "all") return "all"
+  if (area === "my-areas") return "my_areas"
   const hit = areas.find((a) => a.nameAr === area || a.nameEn === area)
   const raw = (hit?.nameEn ?? hit?.nameAr ?? String(area))
     .trim()
@@ -81,14 +82,16 @@ function areaExportSlug(area: AreaFilter, areas: ManagedArea[]): string {
   return raw.slice(0, 48) || "area"
 }
 
-/** Area label for captions / export: locale-aware name, or All Areas. */
+/** Area label for captions / export: locale-aware name, All Areas, or My Areas. */
 function resolveAreaDisplayLabel(
   area: AreaFilter,
   areas: ManagedArea[],
   languageIsAr: boolean,
   tAll: string,
+  tMyAreas: string,
 ): string {
   if (area === "all") return tAll
+  if (area === "my-areas") return tMyAreas
   const hit = areas.find((a) => a.nameAr === area || a.nameEn === area)
   if (!hit) return String(area)
   return languageIsAr ? hit.nameAr : hit.nameEn
@@ -365,6 +368,7 @@ export function RatingsTrendChart({
         areas,
         languageIsAr,
         t("dashboard.areaAll"),
+        t("dashboard.areas.myAreas"),
       ),
     [area, areas, languageIsAr, t],
   )

@@ -155,6 +155,7 @@ export default {
     // ── Area names ──────────────────────────────────────────
     areas: {
       all: "All Areas",
+      myAreas: "My Areas",
       doha: "Doha",
       rayyan: "Al Rayyan",
       wakrah: "Al Wakrah",

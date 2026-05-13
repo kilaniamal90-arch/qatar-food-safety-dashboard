@@ -222,6 +222,7 @@ type ImportSaveSummary = {
   fuzzyInsp: number
   withoutReference: number
   otherWarnings: number
+  otherWarningMessages: string[]
 }
 
 function ImportSaveSummaryToast({
@@ -238,7 +239,7 @@ function ImportSaveSummaryToast({
     summary.fallbackInspectorNames.length > 0 ||
     summary.fuzzyInsp > 0 ||
     summary.withoutReference > 0 ||
-    summary.otherWarnings > 0
+    summary.otherWarningMessages.length > 0
   const showSkipped = summary.skipEst > 0 || summary.skipInsp > 0
 
   return (
@@ -315,8 +316,23 @@ function ImportSaveSummaryToast({
               {summary.fuzzyInsp > 0 ? (
                 <li>{t("dataImport.saveToastFuzzyInspectors", { count: summary.fuzzyInsp })}</li>
               ) : null}
-              {summary.otherWarnings > 0 ? (
-                <li>{t("dataImport.saveToastOtherWarnings", { count: summary.otherWarnings })}</li>
+              {summary.otherWarningMessages.length > 0 ? (
+                <li>
+                  <details>
+                    <summary className="cursor-pointer text-amber-400">
+                      {t("dataImport.saveToastOtherWarnings", {
+                        count: summary.otherWarnings,
+                      })}
+                    </summary>
+                    <ul className="mt-1 space-y-1 text-xs text-amber-300">
+                      {summary.otherWarningMessages.map((msg, i) => (
+                        <li key={i} className="border-t border-amber-500/20 pt-1">
+                          {msg}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </li>
               ) : null}
             </ul>
           </div>
@@ -609,6 +625,7 @@ export function DataImportPage() {
         fallbackInspectorNames: result.inspectorFallbackNames,
         fuzzyInsp: result.inspectorFuzzyMatchCount,
         otherWarnings: result.warnings.length,
+        otherWarningMessages: result.warnings,
       }
 
       toast.custom(() => <ImportSaveSummaryToast summary={summary} t={t} rtl={rtl} />, {

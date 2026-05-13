@@ -8,6 +8,7 @@ import type {
   OperationalStatus,
   YearFilter,
 } from "@/data/rawData"
+import { isDashboardAreaAggregate } from "@/data/rawData"
 
 export type AlertLevel = "none" | "warning" | "danger"
 
@@ -112,10 +113,9 @@ export function prepareTableDataFromSlices(
 ): TableRow[] {
   const yearNum = Number(selectedYear)
 
-  const filteredEstablishments =
-    selectedArea === "all"
-      ? establishments
-      : establishments.filter((e) => e.area === selectedArea)
+  const filteredEstablishments = isDashboardAreaAggregate(selectedArea)
+    ? establishments
+    : establishments.filter((e) => e.area === selectedArea)
 
   const estNameSet = new Set(filteredEstablishments.map((e) => e.name))
 
@@ -206,10 +206,9 @@ export function prepareOverdueTableDataFromSlices(
     | null = null,
   dateUnknownLabel = "—",
 ): TableRow[] {
-  const filteredEstablishments =
-    selectedArea === "all"
-      ? establishments
-      : establishments.filter((e) => e.area === selectedArea)
+  const filteredEstablishments = isDashboardAreaAggregate(selectedArea)
+    ? establishments
+    : establishments.filter((e) => e.area === selectedArea)
 
   const estNameSet = new Set(filteredEstablishments.map((e) => e.name))
 
@@ -365,10 +364,9 @@ export function prepareStatusFollowUpTableDataFromSlices(
     | null = null,
   dateUnknownLabel = "—",
 ): TableRow[] {
-  const filteredEstablishments =
-    selectedArea === "all"
-      ? establishments
-      : establishments.filter((e) => e.area === selectedArea)
+  const filteredEstablishments = isDashboardAreaAggregate(selectedArea)
+    ? establishments
+    : establishments.filter((e) => e.area === selectedArea)
 
   const visibleEstablishments = filteredEstablishments.filter((e) =>
     establishmentVisibleInFollowUpTable(e, operationalStatusCurrentYearByEstId),

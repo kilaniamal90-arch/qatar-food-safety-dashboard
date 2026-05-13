@@ -1,8 +1,9 @@
 import { Loader2Icon } from "lucide-react"
 import { MotionConfig, motion } from "framer-motion"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 
+import { useAuth } from "@/auth/AuthContext"
 import { DashboardEventsBar } from "@/components/dashboard/DashboardEventsBar"
 import {
   DashboardFilters,
@@ -22,8 +23,21 @@ import {
 } from "@/lib/dashboardMotion"
 import { useTranslation } from "react-i18next"
 
+/** Non-admins must never query with `all`; map to `my-areas` until the UI selection catches up. */
+function resolveRemoteDashboardArea(
+  isAdmin: boolean,
+  area: AreaFilter,
+  assignedIds: readonly string[],
+): AreaFilter {
+  if (isAdmin) return area
+  if (assignedIds.length === 0) return "my-areas"
+  if (area === "all") return "my-areas"
+  return area
+}
+
 export function DashboardPage() {
   const { t } = useTranslation()
+  const { user, isAdmin } = useAuth()
   const [year, setYear] = useState<YearFilter>(() => String(new Date().getFullYear()))
   const [area, setArea] = useState<AreaFilter>("all")
   const location = useLocation()
@@ -67,12 +81,47 @@ export function DashboardPage() {
     }
   }, [location.pathname, refetchAreas, refetchYears])
 
+  useLayoutEffect(() => {
+    if (isAdmin) return
+    if (user.areas.length === 0) return
+    setArea((a) => {
+      if (a !== "all") return a
+      return user.areas.length >= 2 ? "my-areas" : a
+    })
+  }, [isAdmin, user.areas])
+
+  useLayoutEffect(() => {
+    if (isAdmin || areasLoading) return
+    if (user.areas.length !== 1) return
+    const row = areas.find((x) => x.id === user.areas[0])
+    if (!row) return
+    setArea((a) =>
+      a === "all" || a === "my-areas" ? (row.nameAr as AreaFilter) : a,
+    )
+  }, [isAdmin, areasLoading, user.areas, areas])
+
   useEffect(() => {
-    if (area === "all") return
+    if (area === "all" || area === "my-areas") return
     if (areasLoading) return
     const ok = areas.some((a) => a.nameAr === area || a.nameEn === area)
-    if (!ok) setArea("all")
-  }, [areas, area, areasLoading])
+    if (!ok) {
+      setArea(
+        isAdmin
+          ? "all"
+          : user.areas.length >= 2
+            ? "my-areas"
+            : user.areas.length === 1
+              ? ((areas.find((x) => x.id === user.areas[0])?.nameAr as AreaFilter) ??
+                "my-areas")
+              : "all",
+      )
+    }
+  }, [areas, area, areasLoading, isAdmin, user.areas])
+
+  const remoteArea = useMemo(
+    () => resolveRemoteDashboardArea(isAdmin, area, user.areas),
+    [isAdmin, area, user.areas],
+  )
 
   const {
     loading,
@@ -82,7 +131,14 @@ export function DashboardPage() {
     tableRows,
     establishments,
     inspectionsAll,
-  } = useDashboardRemote(year, area, areas, areasLoading, t("common.dateUnknown"))
+  } = useDashboardRemote(
+    year,
+    remoteArea,
+    areas,
+    areasLoading,
+    t("common.dateUnknown"),
+    user.areas,
+  )
 
   return (
     <MotionConfig reducedMotion="user">
@@ -147,10 +203,10 @@ export function DashboardPage() {
 
             <motion.div variants={dashboardSectionItem}>
               <RatingsTrendChart
-                key={`ratings-trend-${area}-${establishments.length}-${inspectionsAll.length}`}
+                key={`ratings-trend-${remoteArea}-${establishments.length}-${inspectionsAll.length}`}
                 establishments={establishments}
                 inspectionsAll={inspectionsAll}
-                area={area}
+                area={remoteArea}
                 areas={areas}
               />
             </motion.div>
