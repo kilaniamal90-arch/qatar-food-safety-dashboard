@@ -3,6 +3,14 @@ import { jsPDF } from "jspdf"
 
 import type { InspectionRating, OperationalStatus } from "@/data/rawData"
 
+/** Helvetica PDF: strip Arabic (renders as ???) — use "—" instead. */
+function sanitizeForPdf(text: string | null | undefined): string {
+  if (!text) return "—"
+  const hasArabic = /[\u0600-\u06FF]/.test(text)
+  if (hasArabic) return "—"
+  return text.trim() || "—"
+}
+
 /** Values written to cells (styling uses `statusKey` / `ratingKey`). */
 export type EstablishmentsExportDataRow = {
   rowNum: number
@@ -227,7 +235,7 @@ export function exportEstablishmentsPdf(
   doc.setFontSize(12)
   doc.setFont("helvetica", "bold")
   doc.setTextColor(brR, brG, brB)
-  doc.text(headerLine1, margin, y)
+  doc.text(sanitizeForPdf(headerLine1), margin, y)
   y += 5.5
 
   doc.setDrawColor(gR, gG, gB)
@@ -238,10 +246,10 @@ export function exportEstablishmentsPdf(
   doc.setFontSize(9)
   doc.setFont("helvetica", "normal")
   doc.setTextColor(75, 75, 75)
-  doc.text(headerLine2, margin, y)
+  doc.text(sanitizeForPdf(headerLine2), margin, y)
   y += 6
 
-  const headers = EXPORT_KEYS.map((k) => colTitles[k])
+  const headers = EXPORT_KEYS.map((k) => sanitizeForPdf(colTitles[k]))
   const colW = [9, 48, 22, 36, 28, 24, 20, 26, 18]
   const tableW = colW.reduce((a, b) => a + b, 0)
   const x0 = margin + Math.max(0, (pageW - 2 * margin - tableW) / 2)
@@ -277,7 +285,7 @@ export function exportEstablishmentsPdf(
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!
-    const cells = EXPORT_KEYS.map((k) => String(r[k] ?? ""))
+    const cells = EXPORT_KEYS.map((k) => sanitizeForPdf(String(r[k] ?? "")))
 
     let maxLines = 1
     const lineChunks: string[][] = []

@@ -285,7 +285,6 @@ export function EstablishmentsPage() {
   const { t, i18n } = useTranslation()
   const isRtl = i18n.language.startsWith("ar")
   const langAr = i18n.language.toLowerCase().startsWith("ar")
-  const isEnglishUi = i18n.language.toLowerCase().startsWith("en")
   const location = useLocation()
   const prevPathRef = useRef<string | null>(null)
 
@@ -619,6 +618,53 @@ export function EstablishmentsPage() {
     ratingExportLabel,
   ])
 
+  const buildPdfExportRows = useCallback((): EstablishmentsExportRow[] => {
+    const tEn = i18n.getFixedT("en")
+    const statusKeys: Record<OperationalStatus, string> = {
+      Open: "dashboard.open",
+      Closed: "dashboard.closed",
+      "Temporary Closed": "dashboard.temporaryClosed",
+      "Open Soon": "dashboard.openSoon",
+    }
+    return sortedAll.map((row, i) => {
+      const e = row.establishment
+      const name = e.nameEn?.trim() || e.name
+      const areaStr = String(e.area ?? "").trim()
+      const hit = areaRows.find(
+        (x) => x.nameAr.trim() === areaStr || x.nameEn.trim() === areaStr,
+      )
+      const area =
+        e.areaNameEn?.trim() ||
+        row.areaNameEn?.trim() ||
+        hit?.nameEn?.trim() ||
+        hit?.nameAr?.trim() ||
+        areaStr
+      const status = tEn(statusKeys[e.operationalStatus])
+      const daysAgo =
+        row.daysAgo == null
+          ? tEn("dataTable.noInspection")
+          : `${row.daysAgo}\u00A0${row.daysAgo === 1 ? tEn("dataTable.day") : tEn("dataTable.days")}`
+      const rating =
+        row.latestRatingNameEn?.trim() ||
+        (row.latestRating
+          ? tEn(ratingTranslationKey(row.latestRating))
+          : tEn("dataTable.noRating"))
+      return {
+        rowNum: i + 1,
+        name,
+        area,
+        location: e.location?.trim() ?? "",
+        status,
+        lastInspection: row.lastInspectionFormatted,
+        daysAgo,
+        rating,
+        inspectionCount: String(row.inspectionCount),
+        statusKey: e.operationalStatus,
+        ratingKey: row.latestRating,
+      }
+    })
+  }, [sortedAll, areaRows, i18n])
+
   const handleExportExcel = () => {
     void (async () => {
       try {
@@ -633,12 +679,24 @@ export function EstablishmentsPage() {
 
   const handleExportPdf = () => {
     try {
-      const rows = buildExcelExportRows()
+      const tEn = i18n.getFixedT("en")
+      const pdfColTitles: EstablishmentsExportColumnTitles = {
+        rowNum: "#",
+        name: tEn("dataTable.col.name"),
+        area: tEn("dataTable.col.area"),
+        location: tEn("dataTable.col.location"),
+        status: tEn("dataTable.col.status"),
+        lastInspection: tEn("dataTable.col.lastInspection"),
+        daysAgo: tEn("dataTable.col.daysAgo"),
+        rating: tEn("dataTable.col.rating"),
+        inspectionCount: tEn("dataTable.col.inspectionCount"),
+      }
+      const rows = buildPdfExportRows()
       exportEstablishmentsPdf(
         rows,
-        excelColTitles,
-        t("dataTable.pdfHeader1"),
-        t("dataTable.pdfHeader2"),
+        pdfColTitles,
+        tEn("dataTable.pdfHeader1"),
+        tEn("dataTable.pdfHeader2"),
         "establishments",
       )
       toast.success(t("establishmentsPage.export.success", { count: rows.length }))
@@ -944,19 +1002,17 @@ export function EstablishmentsPage() {
               <FileSpreadsheet className="size-4 shrink-0" aria-hidden />
               <span>{t("establishmentsPage.export.excel")}</span>
             </Button>
-            {isEnglishUi ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 border-[#8B1538]/35 text-[#8B1538] hover:bg-[#8B1538]/10"
-                onClick={() => handleExportPdf()}
-                disabled={loading || sortedAll.length === 0}
-                aria-label={t("establishmentsPage.export.pdf")}
-              >
-                <FileText className="size-4 shrink-0" aria-hidden />
-                <span>{t("establishmentsPage.export.pdf")}</span>
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-2 border-[#8B1538]/35 text-[#8B1538] hover:bg-[#8B1538]/10"
+              onClick={() => handleExportPdf()}
+              disabled={loading || sortedAll.length === 0}
+              aria-label={t("establishmentsPage.export.pdf")}
+            >
+              <FileText className="size-4 shrink-0" aria-hidden />
+              <span>{t("establishmentsPage.export.pdf")}</span>
+            </Button>
             <Button
               type="button"
               className="gap-2 whitespace-nowrap bg-[#8B1538] text-white hover:bg-[#8B1538]/90"

@@ -1,6 +1,5 @@
 import html2canvas from "html2canvas"
-import { Download } from "lucide-react"
-import { useTheme } from "next-themes"
+import { Download, Loader2 } from "lucide-react"
 import { createPortal, flushSync } from "react-dom"
 import {
   useCallback,
@@ -354,7 +353,6 @@ export function RatingsTrendChart({
   className?: string
 }) {
   const { t, i18n } = useTranslation()
-  const { resolvedTheme } = useTheme()
   const { data: yearsRows, loading: yearsLoading } = useYears()
   const { data: ratingsRows, loading: ratingsLoading } = useRatings()
 
@@ -378,6 +376,7 @@ export function RatingsTrendChart({
     () => new Set(),
   )
   const [exportActive, setExportActive] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const exportMountRef = useRef<HTMLDivElement>(null)
 
   const activeCalendarYears = useMemo(() => {
@@ -465,18 +464,18 @@ export function RatingsTrendChart({
 
   const exportPng = useCallback(async () => {
     if (!hasAnyCount) return
-    const isDark = resolvedTheme === "dark"
-    flushSync(() => {
-      setExportActive(true)
-    })
-    await new Promise<void>((r) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => r())),
-    )
-    /** Let export chart mount; Recharts still lays out async without path animation (see disableAnimations). */
-    await new Promise((r) => setTimeout(r, 1200))
-
-    const el = exportMountRef.current
+    setIsExporting(true)
     try {
+      flushSync(() => {
+        setExportActive(true)
+      })
+      await new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r())),
+      )
+      /** Let export chart mount; Recharts still lays out async without path animation (see disableAnimations). */
+      await new Promise((r) => setTimeout(r, 1200))
+
+      const el = exportMountRef.current
       if (!el) throw new Error("Export mount missing")
 
       el.querySelectorAll("svg").forEach((svg) => {
@@ -498,7 +497,7 @@ export function RatingsTrendChart({
       )
 
       const canvas = await html2canvas(el, {
-        backgroundColor: isDark ? "#0f172a" : "#ffffff",
+        backgroundColor: "#ffffff",
         scale: 2,
         useCORS: true,
         allowTaint: true,
@@ -528,12 +527,12 @@ export function RatingsTrendChart({
       flushSync(() => {
         setExportActive(false)
       })
+      setIsExporting(false)
     }
   }, [
     area,
     areas,
     hasAnyCount,
-    resolvedTheme,
     t,
   ])
 
@@ -568,7 +567,7 @@ export function RatingsTrendChart({
             ratingLines={ratingLines}
             chartPack={chartPack}
             percentageYMax={percentageYMax}
-            isDark={resolvedTheme === "dark"}
+            isDark={false}
             t={t}
             i18n={i18n}
           />
@@ -634,7 +633,8 @@ export function RatingsTrendChart({
               <button
                 type="button"
                 onClick={() => void exportPng()}
-                disabled={!hasAnyCount || loading}
+                disabled={!hasAnyCount || loading || isExporting}
+                aria-busy={isExporting}
                 className={cn(
                   "inline-flex size-9 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm transition-all duration-300",
                   "hover:border-primary/50 hover:bg-muted/50",
@@ -643,7 +643,11 @@ export function RatingsTrendChart({
                 )}
                 aria-label={t("dashboard.ratingsTrend.exportAria")}
               >
-                <Download className="size-4 shrink-0" aria-hidden />
+                {isExporting ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                ) : (
+                  <Download className="size-4 shrink-0" aria-hidden />
+                )}
               </button>
             </div>
           </div>

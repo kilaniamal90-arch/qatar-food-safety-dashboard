@@ -42,11 +42,7 @@ import {
   inspectorDisplayName,
   type EstablishmentInspectionDetail,
 } from "@/lib/supabase/remoteDataset"
-import {
-  buildEstablishmentPrintHtml,
-  openEstablishmentPrintWindow,
-  type EstablishmentPrintField,
-} from "@/lib/establishmentPrintWindow"
+import { exportEstablishmentDetailPdf } from "@/lib/establishmentDetailPdf"
 import { canDeleteInspection, canEditInspection } from "@/lib/permissions/canMutateInspection"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -140,17 +136,6 @@ async function captureChartRegionToPng(
     }
   }
   return null
-}
-
-function formatPrintIssueDate(now: Date, easternArabicNumerals: boolean): string {
-  const d = String(now.getDate()).padStart(2, "0")
-  const mo = String(now.getMonth() + 1).padStart(2, "0")
-  const y = String(now.getFullYear())
-  const western = `${d}/${mo}/${y}`
-  if (!easternArabicNumerals) return western
-  return western.replace(/[0-9]/g, (ch) =>
-    String.fromCharCode(0x0660 + (ch.charCodeAt(0) - 48)),
-  )
 }
 
 function nonEmpty(v: unknown): v is string | number {
@@ -330,6 +315,24 @@ export function EstablishmentDetailSheet({
     )
     return hit?.id ?? null
   }, [establishment, areaRows])
+
+  /** English area label for PDF export (area row by id → nameEn || nameAr). */
+  const pdfAreaNameEn = useMemo(() => {
+    if (!establishment) return ""
+    if (resolvedAreaIdForPerm) {
+      const hit = areaRows.find((a) => a.id === resolvedAreaIdForPerm)
+      if (hit) {
+        const en = hit.nameEn?.trim()
+        const ar = hit.nameAr?.trim()
+        return (en || ar || "").trim()
+      }
+    }
+    return (
+      establishment.areaNameEn?.trim() ||
+      String(establishment.area ?? "").trim() ||
+      ""
+    )
+  }, [establishment, areaRows, resolvedAreaIdForPerm])
 
   useEffect(() => {
     if (!open) {
@@ -601,99 +604,17 @@ export function EstablishmentDetailSheet({
         })
       }
     }
-    const fields: EstablishmentPrintField[] = []
-    const push = (label: string, value: unknown) => {
-      if (value == null) return
-      if (typeof value === "number" && Number.isFinite(value)) {
-        fields.push({ label, value: String(value) })
-        return
-      }
-      const s = String(value).trim()
-      if (s === "" || s === "—") return
-      fields.push({ label, value: s })
-    }
 
-    push(
-      t("establishmentsPage.detail.name"),
-      i18n.language.startsWith("ar") ? e.name : e.nameEn?.trim() || e.name,
-    )
-    if (nonEmpty(e.nameInEms)) push(t("establishmentsPage.detail.nameEms"), e.nameInEms)
-    push(t("establishmentsPage.detail.mainArea"), areaLabel(e))
-    if (nonEmpty(e.location) && e.location !== "—") {
-      push(t("establishmentsPage.detail.location"), e.location)
-    }
-    push(t("establishmentsPage.detail.operationalStatus"), statusLabel(e.operationalStatus))
-    if (nonEmpty(e.activityType)) push(t("establishmentsPage.detail.activityType"), e.activityType)
-    if (nonEmpty(e.crNumber)) push(t("establishmentsPage.detail.crNumber"), e.crNumber)
-    if (nonEmpty(e.accountStatusInEms)) {
-      push(t("establishmentsPage.detail.accountEms"), e.accountStatusInEms)
-    }
-    if (e.nbOutlets != null && e.nbOutlets >= 0) {
-      push(t("establishmentsPage.detail.nbOutlets"), e.nbOutlets)
-    }
-    if (nonEmpty(e.phone)) push(t("establishmentsPage.detail.phone"), e.phone)
-    if (nonEmpty(e.personInCharge)) {
-      push(t("establishmentsPage.detail.personInCharge"), e.personInCharge)
-    }
-    if (nonEmpty(e.email)) push(t("establishmentsPage.detail.email"), e.email)
-    if (nonEmpty(e.serviceHours)) push(t("establishmentsPage.detail.serviceHours"), e.serviceHours)
-
-    const inspectionRows = inspections.map((ins, idx) => ({
-      num: idx + 1,
-      date: ins.inspectionDate
-        ? formatInspectionDateDdMmYyyy(ins.inspectionDate, t("common.dateUnknown"))
-        : t("common.dateUnknown"),
-      rating: ratingDisplay(ins) ?? t(ratingTranslationKey(ins.rating)),
-      inspector: inspectorDisplayName(ins, i18n.language.startsWith("ar")),
-      ref: ins.refNumber?.trim() || "—",
-      task: ins.taskType?.trim() || "—",
-      note: ins.note?.trim(),
-    }))
-
-    const trendItems = chartSeries.map((p) => ({
-      dateLabel: p.dateLabel,
-      ratingLabel: p.name,
-      score: p.score,
-    }))
-
-    const printIssueDateFormatted = formatPrintIssueDate(new Date(), isRtl)
-    const printHeaderActivity = nonEmpty(e.activityType)
-      ? String(e.activityType).trim()
-      : t("establishmentsPage.detail.printActivityUnspecified")
-
-    const displayName = i18n.language.startsWith("ar") ? e.name : e.nameEn?.trim() || e.name
-    const html = buildEstablishmentPrintHtml({
-      dir: isRtl ? "rtl" : "ltr",
-      lang: isRtl ? "ar" : "en",
-      documentTitle: displayName,
-      printHeaderTitle: t("establishmentsPage.detail.printHeaderTitle"),
-      printHeaderName: displayName,
-      printHeaderActivity,
-      printIssueDateLabel: t("establishmentsPage.detail.printIssueDate"),
-      printIssueDateFormatted,
-      sectionEstablishment: t("establishmentsPage.detail.printSectionEstablishment"),
-      sectionInspections: t("establishmentsPage.detail.printInspectionsTitle"),
-      sectionTrend: t("establishmentsPage.detail.printChartTitle"),
-      printChartCaption: t("establishmentsPage.detail.printChartCaption"),
-      printChartUnavailable: t("establishmentsPage.detail.printChartUnavailable"),
-      emptyInspections: t("establishmentsPage.detail.noInspections"),
-      chartNotEnough: t("establishmentsPage.detail.chartNotEnoughPrint"),
-      tableNum: "#",
-      tableDate: t("establishmentsPage.detail.printColDate"),
-      tableRating: t("establishmentsPage.detail.printColRating"),
-      tableInspector: t("establishmentsPage.detail.printColInspector"),
-      tableRef: t("establishmentsPage.detail.printColRef"),
-      tableTask: t("establishmentsPage.detail.printColTask"),
-      fields,
-      photoUrl: nonEmpty(e.establishmentPhoto) ? String(e.establishmentPhoto).trim() : null,
-      inspections: inspectionRows,
-      trendItems,
-      chartImageDataUrl,
-      establishmentNotesPrint: nonEmpty(e.establishmentNote) ? String(e.establishmentNote).trim() : null,
-      sectionNotesTitle: t("establishmentsPage.detail.tabNotes"),
-    })
-
-    if (!openEstablishmentPrintWindow(html)) {
+    try {
+      await exportEstablishmentDetailPdf(
+        e,
+        inspections,
+        pdfAreaNameEn,
+        chartImageDataUrl,
+        e.establishmentNote ?? null,
+      )
+    } catch (err) {
+      console.error(err)
       toast.error(t("establishmentsPage.detail.printFailed"))
     }
     } finally {
