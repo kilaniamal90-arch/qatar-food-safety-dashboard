@@ -435,10 +435,39 @@ function printEstablishmentFromBlobUrlInIframe(
       window.setTimeout(runPrint, postLoadDelayMs)
       return
     }
-    // Wait for fonts to load
     if (win.document.fonts) {
       void win.document.fonts.ready.then(() => {
-        window.setTimeout(runPrint, androidLayout ? 800 : 300)
+        if (!androidLayout) {
+          window.setTimeout(runPrint, 300)
+          return
+        }
+        // Android: after fonts ready, wait for full render
+        // Force layout recalculation
+        try {
+          void win.document.body?.getBoundingClientRect()
+        } catch {
+          /* ignore */
+        }
+        // Wait for images if any
+        const images = Array.from(win.document.images)
+        const allLoaded = images.every((img) => img.complete)
+        if (allLoaded || images.length === 0) {
+          window.setTimeout(runPrint, 2000)
+        } else {
+          let loaded = 0
+          const onLoad = () => {
+            loaded++
+            if (loaded >= images.length) {
+              window.setTimeout(runPrint, 1500)
+            }
+          }
+          images.forEach((img) => {
+            img.addEventListener("load", onLoad, { once: true })
+            img.addEventListener("error", onLoad, { once: true })
+          })
+          // Safety fallback
+          window.setTimeout(runPrint, postLoadDelayMs + 2000)
+        }
       })
     } else {
       window.setTimeout(runPrint, postLoadDelayMs)
