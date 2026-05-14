@@ -473,7 +473,7 @@ export function RatingsTrendChart({
       requestAnimationFrame(() => requestAnimationFrame(() => r())),
     )
     /** Let export chart mount; Recharts still lays out async without path animation (see disableAnimations). */
-    await new Promise((r) => setTimeout(r, 800))
+    await new Promise((r) => setTimeout(r, 1200))
 
     const el = exportMountRef.current
     try {
@@ -487,10 +487,15 @@ export function RatingsTrendChart({
       el.querySelectorAll("svg").forEach((svg) => {
         svg.style.removeProperty("opacity")
       })
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise((r) => setTimeout(r, 400))
 
-      const width = Math.max(Math.ceil(el.scrollWidth), el.offsetWidth)
-      const height = Math.max(Math.ceil(el.scrollHeight), el.offsetHeight)
+      const width = Math.max(Math.ceil(el.scrollWidth), el.offsetWidth, 1080)
+      const height = Math.max(
+        Math.ceil(el.scrollHeight),
+        el.offsetHeight,
+        el.getBoundingClientRect().height,
+        600, // minimum height to ensure chart is never cut off
+      )
 
       const canvas = await html2canvas(el, {
         backgroundColor: isDark ? "#0f172a" : "#ffffff",

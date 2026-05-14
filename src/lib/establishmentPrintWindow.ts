@@ -142,6 +142,9 @@ ${opts.inspections
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=0.95"/>
 <title>${escapeHtml(opts.documentTitle)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -151,7 +154,7 @@ ${opts.inspections
     min-height: 297mm;
   }
   body {
-    font-family: "Segoe UI", Arial, sans-serif;
+    font-family: 'Noto Sans Arabic', Arial, sans-serif;
     padding: 24px;
     color: #111;
     background: #fff;
@@ -432,45 +435,13 @@ function printEstablishmentFromBlobUrlInIframe(
       window.setTimeout(runPrint, postLoadDelayMs)
       return
     }
-
-    const images = Array.from(win.document.images)
-    if (images.length === 0) {
-      window.setTimeout(runPrint, postLoadDelayMs)
-      return
-    }
-
-    let printScheduled = false
-    const fallback = window.setTimeout(() => {
-      if (printScheduled) return
-      printScheduled = true
-      runPrint()
-    }, postLoadDelayMs + 3_000)
-
-    let loaded = 0
-    const total = images.length
-    const onImageLoad = () => {
-      if (printScheduled) return
-      loaded++
-      if (loaded >= total) {
-        printScheduled = true
-        window.clearTimeout(fallback)
+    // Wait for fonts to load
+    if (win.document.fonts) {
+      void win.document.fonts.ready.then(() => {
         window.setTimeout(runPrint, androidLayout ? 800 : 300)
-      }
-    }
-
-    images.forEach((img) => {
-      if (img.complete) {
-        loaded++
-      } else {
-        img.addEventListener("load", onImageLoad, { once: true })
-        img.addEventListener("error", onImageLoad, { once: true })
-      }
-    })
-
-    if (loaded >= total) {
-      printScheduled = true
-      window.clearTimeout(fallback)
-      window.setTimeout(runPrint, androidLayout ? 800 : 300)
+      })
+    } else {
+      window.setTimeout(runPrint, postLoadDelayMs)
     }
   }
 
