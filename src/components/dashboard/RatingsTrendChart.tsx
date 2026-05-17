@@ -185,10 +185,19 @@ function RatingsTrendLineChart({
   return (
     <div className={cn(containerClassName)} style={containerStyle} dir="ltr">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={rows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+        <LineChart
+          data={rows}
+          margin={{
+            top: 8,
+            right: 16,
+            left: 0,
+            bottom: disableAnimations ? 28 : 8,
+          }}
+        >
           <CartesianGrid strokeDasharray="3 3" className="stroke-border/80" />
           <XAxis
             dataKey="year"
+            interval={disableAnimations ? 0 : undefined}
             tick={{ fill: "var(--foreground)", fontSize: 12 }}
             tickLine={false}
             axisLine={{ stroke: "var(--border)" }}
@@ -331,8 +340,8 @@ function ExportRatingsTrendSnapshot({
           hidden={new Set()}
           mode={mode}
           percentageYMax={percentageYMax}
-          containerStyle={{ width: "100%", height: 400 }}
-          disableAnimations
+          containerStyle={{ width: "100%", height: 450 }}
+          disableAnimations={true}
         />
       </div>
     </div>
@@ -473,7 +482,7 @@ export function RatingsTrendChart({
         requestAnimationFrame(() => requestAnimationFrame(() => r())),
       )
       /** Let export chart mount; Recharts still lays out async without path animation (see disableAnimations). */
-      await new Promise((r) => setTimeout(r, 1200))
+      await new Promise((r) => setTimeout(r, 1800))
 
       const el = exportMountRef.current
       if (!el) throw new Error("Export mount missing")
@@ -486,7 +495,7 @@ export function RatingsTrendChart({
       el.querySelectorAll("svg").forEach((svg) => {
         svg.style.removeProperty("opacity")
       })
-      await new Promise((r) => setTimeout(r, 400))
+      await new Promise((r) => setTimeout(r, 600))
 
       const width = Math.max(Math.ceil(el.scrollWidth), el.offsetWidth, 1080)
       const height = Math.max(
@@ -496,6 +505,18 @@ export function RatingsTrendChart({
         600, // minimum height to ensure chart is never cut off
       )
 
+      // Force SVG text elements to be visible for html2canvas
+      el.querySelectorAll("svg text").forEach((textNode) => {
+        const textEl = textNode as SVGTextElement
+        textEl.style.visibility = "visible"
+        textEl.style.opacity = "1"
+        textEl.style.fill = textEl.style.fill || "#666666"
+      })
+
+      // Force reflow
+      void el.getBoundingClientRect()
+      await new Promise((r) => setTimeout(r, 300))
+
       const canvas = await html2canvas(el, {
         backgroundColor: "#ffffff",
         scale: 2,
@@ -503,8 +524,11 @@ export function RatingsTrendChart({
         allowTaint: true,
         logging: false,
         foreignObjectRendering: false,
+        ignoreElements: () => false,
         width,
         height,
+        windowWidth: 1080,
+        windowHeight: height,
       })
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png"),
