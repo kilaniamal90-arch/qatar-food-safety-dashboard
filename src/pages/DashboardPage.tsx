@@ -191,11 +191,11 @@ export function DashboardPage() {
             >
               <EstablishmentsCard
                 total={processedData.establishments.total}
-                ratingBreakdown={processedData.establishments.ratingBreakdown}
+                statusBreakdown={processedData.inspections.statusBreakdown}
               />
               <InspectionsCard
                 total={processedData.inspections.total}
-                statusBreakdown={processedData.inspections.statusBreakdown}
+                ratingBreakdown={processedData.establishments.ratingBreakdown}
                 trendPct={inspectionsTrendPct}
                 year={year}
               />

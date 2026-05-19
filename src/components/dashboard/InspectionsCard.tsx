@@ -3,77 +3,59 @@ import { useRef } from "react"
 import { useTranslation } from "react-i18next"
 
 import { TrendBadge } from "@/components/dashboard/TrendBadge"
-import type { StatusEntry, StatusTKey } from "@/data/processData"
+import type { RatingEntry, RatingTKey } from "@/data/processData"
 import { useCountUp } from "@/hooks/useCountUp"
 import { useIntersection } from "@/hooks/useIntersection"
 import { cn, fmtNum, fmtPct } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-const STATUS_EMOJIS: Record<StatusTKey, string> = {
-  "dashboard.open": "🟢",
-  "dashboard.closed": "🔴",
-  "dashboard.temporaryClosed": "🟡",
-  "dashboard.openSoon": "🟣",
-  "dashboard.statusUndetermined": "⚪",
+const RATING_EMOJIS: Record<RatingTKey, string> = {
+  "dashboard.excellent": "⭐⭐⭐",
+  "dashboard.veryGood": "⭐⭐",
+  "dashboard.good": "⭐",
+  "dashboard.fair": "⚠️",
+  "dashboard.poor": "❌",
+  "dashboard.veryPoor": "🔴",
 }
 
-function StatusBarRow({
-  entry,
-  totalForShare,
-  animate,
-}: {
-  entry: StatusEntry
-  totalForShare: number
-  animate: boolean
-}) {
+function RatingMiniCard({ entry, idx }: { entry: RatingEntry; idx: number }) {
   const { t } = useTranslation()
-  const barPct = totalForShare > 0 ? (entry.count / totalForShare) * 100 : 0
-
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-          <span role="img" aria-hidden className="text-base leading-none">
-            {STATUS_EMOJIS[entry.tKey] ?? "📋"}
-          </span>
-          {t(entry.tKey)}
-        </span>
-        <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-          {fmtNum(entry.count)} ({fmtPct(entry.percentage)})
-        </span>
-      </div>
-
-      <div className="h-2.5 overflow-hidden rounded-full bg-secondary">
-        {animate ? (
-          <div
-            className="progress-animated h-full rounded-full"
-            style={
-              {
-                "--target-width": `${barPct.toFixed(2)}%`,
-                background: entry.gradient,
-              } as React.CSSProperties
-            }
-          />
-        ) : (
-          <div
-            className="h-full rounded-full"
-            style={{ width: "0%", background: entry.gradient }}
-          />
-        )}
-      </div>
+    <div
+      className={cn(
+        `mini-card-${idx + 1}`,
+        "group flex flex-col items-center gap-1.5 rounded-xl p-4 text-white shadow-sm",
+        "cursor-default select-none",
+        "transition-[transform,box-shadow] duration-250 will-change-transform motion-reduce:will-change-auto",
+        "hover:-translate-y-1 hover:shadow-[0_12px_24px_rgba(0,0,0,0.22)] motion-reduce:hover:translate-y-0 motion-reduce:hover:shadow-sm",
+      )}
+      style={{ background: entry.gradient }}
+    >
+      <span className="text-xl leading-none" role="img" aria-hidden>
+        {RATING_EMOJIS[entry.tKey] ?? "📋"}
+      </span>
+      <span className="text-xs font-semibold leading-tight text-center">
+        {t(entry.tKey)}
+      </span>
+      <span className="text-2xl font-bold tabular-nums leading-tight">
+        {fmtNum(entry.count)}
+      </span>
+      <span className="text-xs font-medium opacity-85">
+        {fmtPct(entry.percentage)}
+      </span>
     </div>
   )
 }
 
 export function InspectionsCard({
   total,
-  statusBreakdown,
+  ratingBreakdown,
   trendPct,
   year,
   className,
 }: {
   total: number
-  statusBreakdown: StatusEntry[]
+  ratingBreakdown: RatingEntry[]
   /** Year-over-year % change when previous year has inspection data; hidden when null. */
   trendPct: number | null
   year: string
@@ -83,8 +65,6 @@ export function InspectionsCard({
   const ref = useRef<HTMLDivElement>(null)
   const visible = useIntersection(ref, { threshold: 0.1 })
   const displayedTotal = fmtNum(useCountUp(total, 1400, { enabled: visible }))
-
-  const totalStatus = statusBreakdown.reduce((s, e) => s + e.count, 0)
 
   return (
     <Card
@@ -119,17 +99,12 @@ export function InspectionsCard({
         <hr className="border-border/60" />
 
         <div>
-          <p className="mb-4 text-sm font-semibold text-foreground">
-            {t("dashboard.statusDistribution")}
+          <p className="mb-3 text-sm font-semibold text-foreground">
+            {t("dashboard.ratingsDistribution")}
           </p>
-          <div className="space-y-4">
-            {statusBreakdown.map((entry) => (
-              <StatusBarRow
-                key={entry.tKey}
-                entry={entry}
-                totalForShare={totalStatus}
-                animate={visible}
-              />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {ratingBreakdown.map((entry, idx) => (
+              <RatingMiniCard key={entry.tKey} entry={entry} idx={idx} />
             ))}
           </div>
         </div>
